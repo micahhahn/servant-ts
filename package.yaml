@@ -1,0 +1,57 @@
+name:                servant-ts
+version:             0.1.0.0
+github:              "micahhahn/servant-ts"
+license:             BSD3
+author:              "Micah Hahn"
+maintainer:          "micah.s.hahn@gmail.com"
+copyright:           "2019 Micah Hahn"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Web
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/micahhahn/servant-ts#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- text
+- containers
+- unordered-containers
+- vector
+- time
+
+- servant
+- servant-foreign
+- aeson
+
+library:
+  source-dirs: src
+
+executables:
+  servant-ts-examples:
+    main:                Main.hs
+    source-dirs:         examples
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - servant-ts
+
+tests:
+  servant-ts-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - servant-ts
