@@ -31,6 +31,9 @@ dependencies:
 - servant-foreign
 - aeson
 
+- tasty
+- tasty-hunit
+
 library:
   source-dirs: src
 

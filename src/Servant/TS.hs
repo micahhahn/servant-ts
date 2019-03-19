@@ -1,6 +1,8 @@
 module Servant.TS (
     tsForAPI,
-    TsTypeable,
+    TsTypeable(..),
+    TsContext (..),
+    TsType(..),
     TsGenOptions(..),
     defaultTsGenOptions
 ) where
