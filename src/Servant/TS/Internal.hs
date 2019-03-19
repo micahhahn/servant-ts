@@ -61,11 +61,6 @@ data TsGenIndent = TsIndentTab
                  | TsIndentSpaces Int
                  deriving (Eq, Ord, Show)
 
-{-
-isValid :: TsType -> Value -> Bool
-isValid = undefined
--}
-
 data TsGenOptions = TsGenOptions
     { _quotes :: TsGenQuotes
     , _indent :: TsGenIndent
@@ -297,7 +292,10 @@ instance (Constructor a, TsSelector c) => TsConstructor (C1 a c) where
     tsConstructor c@(M1 r) = do
         sels <- tsSelector r
         let n = sanitizeTSName . Text.pack . conName $ c
-        let tsType = if conIsRecord c then TsObject sels else TsTuple (snd <$> sels)
+        let tsType = if conIsRecord c then TsObject sels
+                                      else case snd <$> sels of
+                                               t:[] -> t
+                                               ts -> TsTuple ts
         return [(n, tsType)]
 
 class TsSelector a where
