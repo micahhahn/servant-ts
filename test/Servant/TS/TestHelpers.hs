@@ -38,6 +38,9 @@ isValid tt@(TsContext (TsObject ts) m) (Object m') = if length ts == length m' &
                                                         Left _ -> Left ()
                                                         Right ts -> Right $ head ts
                                                      else Right (tt, Object m')
+isValid (TsContext (TsMap t) m) (Object m') = if all (\v -> isLeft $ isValid (TsContext t m) v) (HashMap.elems m')
+                                              then Left ()
+                                              else Right ((TsContext (TsMap t) m), (Object m'))
 isValid tt@(TsContext (TsRef t) m) v = case Map.lookup t m of
     Just t' -> isValid (TsContext t' m) v
     Nothing -> Right (tt, v)

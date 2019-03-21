@@ -11,6 +11,8 @@ import Data.Functor.Identity (Identity(..))
 import Data.Functor.Product (Product(..))
 import Data.Int (Int8, Int16, Int32, Int64)
 import Data.List.NonEmpty (NonEmpty)
+import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Ratio (Ratio, (%))
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -61,4 +63,10 @@ instanceTests = testGroup "Aeson <-> TS instance isomorphic"
     , makeTest (Const 1 :: Const Int Text)
     , makeTest (Compose 1 :: Compose Identity Identity Int)
     , makeTest (Pair (Identity 1) (Const "a") :: Product Identity (Const Text) Int)
+    {- , makeTest (Seq [1]) -}
+    {- , makeTest (Set [1]) -}
+    {-, makeTest (IntSet [1]) -}
+    {- IntMap -}
+    {- Tree -}
+    , makeTest (Map.insert 1 "a" Map.empty :: Map Int Text) 
     ]
