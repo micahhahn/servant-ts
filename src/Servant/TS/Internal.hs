@@ -399,9 +399,9 @@ instance (Typeable a, TsTypeable a, Typeable b, TsTypeable b) => TsTypeable (Eit
     tsTypeRep _ = do 
         l <- tsTypeRep (Proxy :: Proxy a)
         r <- tsTypeRep (Proxy :: Proxy b)
-        let t = TsUntaggedUnion [("Left", TsObject [("Left", l)]), ("Right", TsObject [("Right", r)])]
+        let t = TsUnion [TsObject [("Left", l)], TsObject [("Right", r)]]
         let tr = typeRep (Proxy :: Proxy (Either a b))
-        TsContext undefined $ Map.insert tr t Map.empty
+        _ <- TsContext () $ Map.insert tr t Map.empty
         return (TsRef tr)
 
 instance (TsTypeable a) => TsTypeable [a] where
@@ -426,10 +426,8 @@ instance (TsTypeable a) => TsTypeable (Identity a) where
 instance (TsTypeable a) => TsTypeable (Const a b) where
     tsTypeRep _ = tsTypeRep (Proxy :: Proxy a)
 
-{-
-instance (TsType a, TsType b) => TsType (Compose f a b) where
-    tsType _ = 
--}
+instance (TsTypeable (f (g b))) => TsTypeable (Compose f g b) where
+    tsTypeRep _ = tsTypeRep (Proxy :: Proxy (f (g b)))
 
 {-
 instance (TsType a, TsType b) => TsType (Product f a b) where
@@ -451,7 +449,7 @@ makeMap k v = do
     vt <- tsTypeRep v
     case kt of
         TsString -> return $ TsMap vt
-        a -> return $ TsArray (TsTuple [kt, vt])
+        _ -> return $ TsArray (TsTuple [kt, vt])
 
 instance (TsTypeable v) => TsTypeable (IntMap v) where
     tsTypeRep _ = makeMap (Proxy :: Proxy Int) (Proxy :: Proxy v)
