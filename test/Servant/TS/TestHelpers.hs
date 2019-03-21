@@ -5,11 +5,15 @@ module Servant.TS.TestHelpers (
 ) where
 
 import Data.Aeson
+import Data.Bifunctor
+import Data.Either
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HashMap
 import Data.Typeable
+import Data.Vector (Vector)
+import qualified Data.Vector as Vector
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -23,7 +27,13 @@ isValid (TsContext TsString _) (String _) = Left ()
 isValid (TsContext (TsNullable t) m) v = case v of
     Null -> Left ()
     _ -> isValid (TsContext t m) v
-isValid tt@(TsContext (TsObject ts) m) (Object m') = if length m == length m' && all (\x -> HashMap.member x m') (fst <$> ts) 
+isValid (TsContext (TsArray t) m) (Array vs) = if Vector.length vs == 0 
+                                               then Left () 
+                                               else second Vector.head $ Vector.sequence ((\v -> isValid (TsContext t m) v) <$> vs)
+isValid (TsContext (TsUnion ts) m) v = if any (\t -> isLeft $ isValid (TsContext t m) v) ts
+                                       then Left ()
+                                       else Right (TsContext (TsUnion ts) m, v)
+isValid tt@(TsContext (TsObject ts) m) (Object m') = if length ts == length m' && all (\x -> HashMap.member x m') (fst <$> ts) 
                                                      then case sequence $ (\(n, t) -> isValid (TsContext t m) $ m' HashMap.! n) <$> ts of
                                                         Left _ -> Left ()
                                                         Right ts -> Right $ head ts
