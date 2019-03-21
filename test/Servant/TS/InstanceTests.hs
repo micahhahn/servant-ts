@@ -5,7 +5,10 @@ module Servant.TS.InstanceTests (
 ) where
 
 import Data.Fixed (Fixed, E0(..))
+import Data.Functor.Compose (Compose(..))
+import Data.Functor.Const (Const(..))
 import Data.Functor.Identity (Identity(..))
+import Data.Functor.Product (Product(..))
 import Data.Int (Int8, Int16, Int32, Int64)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Ratio (Ratio, (%))
@@ -55,4 +58,7 @@ instanceTests = testGroup "Aeson <-> TS instance isomorphic"
     , makeTest ([1] :: [Int])
     {- , makeTest (NonEmpty [1] :: NonEmpty Int) -}
     , makeTest (Identity 1 :: Identity Int)
+    , makeTest (Const 1 :: Const Int Text)
+    , makeTest (Compose 1 :: Compose Identity Identity Int)
+    , makeTest (Pair (Identity 1) (Const "a") :: Product Identity (Const Text) Int)
     ]
