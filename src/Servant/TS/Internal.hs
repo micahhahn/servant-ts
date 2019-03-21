@@ -14,6 +14,7 @@ import Data.Fixed (Fixed, HasResolution)
 import Data.Functor.Compose (Compose)
 import Data.Functor.Const (Const)
 import Data.Functor.Identity (Identity)
+import Data.Functor.Product (Product)
 import qualified Data.HashMap.Strict as HMS
 import Data.Int (Int8, Int16, Int32, Int64)
 import Data.IntMap (IntMap)
@@ -429,10 +430,11 @@ instance (TsTypeable a) => TsTypeable (Const a b) where
 instance (TsTypeable (f (g b))) => TsTypeable (Compose f g b) where
     tsTypeRep _ = tsTypeRep (Proxy :: Proxy (f (g b)))
 
-{-
-instance (TsType a, TsType b) => TsType (Product f a b) where
-    tsType _ = 
--}
+instance (TsTypeable (f a), TsTypeable (g a)) => TsTypeable (Product f g a) where
+    tsTypeRep _ = do
+        l <- tsTypeRep (Proxy :: Proxy (f a))
+        r <- tsTypeRep (Proxy :: Proxy (g a))
+        return $ TsTuple [l, r]
 
 instance (TsTypeable a) => TsTypeable (Seq a) where
     tsTypeRep _ = TsArray <$> (tsTypeRep (Proxy :: Proxy a))
