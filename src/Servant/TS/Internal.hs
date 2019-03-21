@@ -339,7 +339,7 @@ instance TsTypeable Float where
     tsTypeRep _ = return TsNumber
 
 instance (TsTypeable a, Integral a) => TsTypeable (Ratio a) where
-    tsTypeRep _ = return TsNumber
+    tsTypeRep _ = return $ TsObject [("denominator", TsNumber), ("numerator", TsNumber)]
     
 instance (HasResolution a) => TsTypeable (Fixed a) where
     tsTypeRep _ = return TsNumber
