@@ -231,6 +231,7 @@ writeEndpoints opts ts = let (TsContext ts' m) = sequence (writeEndpoint opts <$
 
 data TsType = TsVoid
             | TsNever
+            | TsNull
             | TsBoolean
             | TsNumber
             | TsString
@@ -521,7 +522,7 @@ instance TsTypeable DiffTime where
 {- instance ToJSON a => ToJSON (Semigroup.Option a) where -}
 
 instance TsTypeable (Proxy a) where
-    tsTypeRep _ = return TsNever
+    tsTypeRep _ = return TsNull
 
 {- 
 instance TsTypeable b => TsTypeable (Tagged a b) where
