@@ -21,6 +21,7 @@ import Servant.TS
 
 {- Determines if a given JSON value can be represented as a TsType -}
 isValid :: TsContext TsType -> Value -> Either () (TsContext TsType, Value)
+isValid (TsContext TsNull _) (Null) = Left ()
 isValid (TsContext TsBoolean _) (Bool _) = Left ()
 isValid (TsContext TsNumber _) (Number _) = Left ()
 isValid (TsContext TsString _) (String _) = Left ()

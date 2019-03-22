@@ -9,6 +9,8 @@ import Data.Functor.Compose (Compose(..))
 import Data.Functor.Const (Const(..))
 import Data.Functor.Identity (Identity(..))
 import Data.Functor.Product (Product(..))
+import Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as HashMap
 import Data.Int (Int8, Int16, Int32, Int64)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
@@ -17,6 +19,10 @@ import Data.Ratio (Ratio, (%))
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Lazy as LT
+import Data.Time
+import Data.Proxy
+import Data.Vector (Vector)
+import qualified Data.Vector as Vector
 import Data.Version (Version, makeVersion)
 import Data.Word (Word8, Word16, Word32, Word64)
 import Numeric.Natural (Natural)
@@ -69,4 +75,10 @@ instanceTests = testGroup "Aeson <-> TS instance isomorphic"
     {- IntMap -}
     {- Tree -}
     , makeTest (Map.insert 1 "a" Map.empty :: Map Int Text) 
+    , makeTest (Vector.fromList [1] :: Vector Int)
+    , makeTest (HashMap.fromList [("a", 1)] :: HashMap Text Int)
+    , makeTest (LocalTime (ModifiedJulianDay 123456) (TimeOfDay 7 30 0))
+    {- NominalDiffTime -}
+    {- DiffTime -}
+    , makeTest (Proxy :: Proxy Int)
     ]
