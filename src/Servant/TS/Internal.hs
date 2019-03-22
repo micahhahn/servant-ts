@@ -28,6 +28,7 @@ import Data.Ratio (Ratio)
 {- import Data.Scientific (Scientific) -}
 import Data.Sequence (Seq)
 import Data.Set (Set)
+import Data.Tagged
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as TE
@@ -524,10 +525,8 @@ instance TsTypeable DiffTime where
 instance TsTypeable (Proxy a) where
     tsTypeRep _ = return TsNull
 
-{- 
 instance TsTypeable b => TsTypeable (Tagged a b) where
     tsTypeRep _ = tsTypeRep (Proxy :: Proxy b)
--}
 
 instance (TsTypeable a, TsTypeable b) => TsTypeable (a, b) where
     tsTypeRep _ = do

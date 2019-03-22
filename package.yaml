@@ -26,6 +26,7 @@ dependencies:
 - unordered-containers
 - vector
 - time
+- tagged
 
 - servant
 - servant-foreign

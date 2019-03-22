@@ -16,6 +16,7 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Ratio (Ratio, (%))
+import Data.Tagged
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Lazy as LT
@@ -81,4 +82,6 @@ instanceTests = testGroup "Aeson <-> TS instance isomorphic"
     {- NominalDiffTime -}
     {- DiffTime -}
     , makeTest (Proxy :: Proxy Int)
+    , makeTest (Tagged 1 :: Tagged Text Int)
+    , makeTest ((1, "a") :: (Int, Text))
     ]
