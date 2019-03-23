@@ -84,4 +84,8 @@ instanceTests = testGroup "Aeson <-> TS instance isomorphic"
     , makeTest (Proxy :: Proxy Int)
     , makeTest (Tagged 1 :: Tagged Text Int)
     , makeTest ((1, "a") :: (Int, Text))
+    , makeTest ((1, "a", False) :: (Int, Text, Bool))
+    , makeTest ((1, "a", False, 2) :: (Int, Text, Bool, Int))
+    , makeTest ((1, "a", False, 2, "b") :: (Int, Text, Bool, Int, Text))
+    , makeTest ((1, "a", False, 2, "b", True) :: (Int, Text, Bool, Int, Text, Bool))
     ]
