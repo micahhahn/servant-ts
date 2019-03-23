@@ -23,6 +23,7 @@ import Data.List (groupBy, sortBy)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import qualified Data.Monoid as Monoid
 import Data.Proxy
 import Data.Ratio (Ratio)
 {- import Data.Scientific (Scientific) -}
@@ -504,11 +505,14 @@ instance TsTypeable NominalDiffTime where
 instance TsTypeable DiffTime where
     tsTypeRep _ = return TsNumber
 
-{- instance ToJSON a => ToJSON (Monoid.Dual a) where -}
+instance TsTypeable a => TsTypeable (Monoid.Dual a) where
+    tsTypeRep _ = tsTypeRep (Proxy :: Proxy a)
 
-{- instance ToJSON a => ToJSON (Monoid.First a) where -}
+instance TsTypeable a => TsTypeable (Monoid.First a) where
+    tsTypeRep _ = tsTypeRep (Proxy :: Proxy a)
 
-{- instance ToJSON a => ToJSON (Monoid.Last a) where -}
+instance TsTypeable a => TsTypeable (Monoid.Last a) where
+    tsTypeRep _ = tsTypeRep (Proxy :: Proxy a)
 
 {- instance ToJSON a => ToJSON (Semigroup.Min a) where -}
 

@@ -15,6 +15,7 @@ import Data.Int (Int8, Int16, Int32, Int64)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import qualified Data.Monoid as Monoid
 import Data.Ratio (Ratio, (%))
 import Data.Tagged
 import Data.Text (Text)
@@ -81,6 +82,9 @@ instanceTests = testGroup "Aeson <-> TS instance isomorphic"
     , makeTest (LocalTime (ModifiedJulianDay 123456) (TimeOfDay 7 30 0))
     {- NominalDiffTime -}
     {- DiffTime -}
+    , makeTest ((Monoid.Dual "a" `mappend` Monoid.Dual "b") :: Monoid.Dual Text)
+    , makeTest ((Monoid.First Nothing `mappend` Monoid.First (Just "b")) :: Monoid.First Text)
+    , makeTest ((Monoid.Last Nothing `mappend` Monoid.Last (Just "b")) :: Monoid.Last Text)
     , makeTest (Proxy :: Proxy Int)
     , makeTest (Tagged 1 :: Tagged Text Int)
     , makeTest ((1, "a") :: (Int, Text))
@@ -88,4 +92,11 @@ instanceTests = testGroup "Aeson <-> TS instance isomorphic"
     , makeTest ((1, "a", False, 2) :: (Int, Text, Bool, Int))
     , makeTest ((1, "a", False, 2, "b") :: (Int, Text, Bool, Int, Text))
     , makeTest ((1, "a", False, 2, "b", True) :: (Int, Text, Bool, Int, Text, Bool))
+    , makeTest ((1, "a", False, 2, "b", True, 3) :: (Int, Text, Bool, Int, Text, Bool, Int))
+    , makeTest ((1, "a", False, 2, "b", True, 3, "c") :: (Int, Text, Bool, Int, Text, Bool, Int, Text))
+    , makeTest ((1, "a", False, 2, "b", True, 3, "c", 4) :: (Int, Text, Bool, Int, Text, Bool, Int, Text, Int))
+    , makeTest ((1, "a", False, 2, "b", True, 3, "c", 4, "d") :: (Int, Text, Bool, Int, Text, Bool, Int, Text, Int, Text))
+    , makeTest ((1, "a", False, 2, "b", True, 3, "c", 4, "d", 5) :: (Int, Text, Bool, Int, Text, Bool, Int, Text, Int, Text, Int))
+    , makeTest ((1, "a", False, 2, "b", True, 3, "c", 4, "d", 5, "c") :: (Int, Text, Bool, Int, Text, Bool, Int, Text, Int, Text, Int, Text))
+    , makeTest ((1, "a", False, 2, "b", True, 3, "c", 4, "d", 5, "c", 6) :: (Int, Text, Bool, Int, Text, Bool, Int, Text, Int, Text, Int, Text, Int))
     ]
