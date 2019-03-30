@@ -27,6 +27,8 @@ dependencies:
 - vector
 - time
 - tagged
+- primitive
+- uuid
 
 - servant
 - servant-foreign

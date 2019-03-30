@@ -1,3 +1,4 @@
+{-# LANGUAGE MagicHash #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Servant.TS.InstanceTests (
@@ -11,11 +12,17 @@ import Data.Functor.Identity (Identity(..))
 import Data.Functor.Product (Product(..))
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HashMap
+import qualified Data.HashSet as HS
 import Data.Int (Int8, Int16, Int32, Int64)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Monoid as Monoid
+import qualified Data.Primitive.Array as PM
+import qualified Data.Primitive.PrimArray as PM
+import qualified Data.Primitive.SmallArray as PM
+import qualified Data.Primitive.Types as PM
+import qualified Data.Primitive.UnliftedArray as PM
 import Data.Ratio (Ratio, (%))
 import Data.Tagged
 import qualified Data.Semigroup as Semigroup
@@ -26,12 +33,19 @@ import Data.Time
 import Data.Time.Clock
 import Data.Time.LocalTime
 import Data.Proxy
+import Data.UUID as UUID
 import Data.Vector (Vector)
-import qualified Data.Vector as Vector
+import qualified Data.Vector as V
+import qualified Data.Vector.Generic as VG
+import qualified Data.Vector.Mutable as VM
+import qualified Data.Vector.Primitive as VP
+import qualified Data.Vector.Storable as VS
+import qualified Data.Vector.Unboxed as VU
 import Data.Version (Version, makeVersion)
 import Data.Word (Word8, Word16, Word32, Word64)
 import Numeric.Natural (Natural)
 import Foreign.C.Types (CTime(..))
+import GHC.Exts
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -80,8 +94,24 @@ instanceTests = testGroup "Aeson <-> TS instance isomorphic"
     {- IntMap -}
     {- Tree -}
     , makeTest (Map.insert 1 "a" Map.empty :: Map Int Text) 
-    , makeTest (Vector.fromList [1] :: Vector Int)
+
+    {- UUID -}
+    , makeTest (UUID.fromWords 1 2 3 4)
+
+    , makeTest (V.fromList [1] :: V.Vector Int)
+    , makeTest (VS.fromList [1] :: VS.Vector Int)
+    , makeTest (VP.fromList [1] :: VP.Vector Int)
+    , makeTest (VU.fromList [1] :: VU.Vector Int)
+    , makeTest (HS.singleton 1 :: HS.HashSet Int)
     , makeTest (HashMap.fromList [("a", 1)] :: HashMap Text Int)
+
+    {- primitive -}
+    , makeTest (PM.fromList [1, 2] :: PM.Array Int)
+    , makeTest (PM.smallArrayFromList [1, 2] :: PM.SmallArray Int)
+    , makeTest (PM.primArrayFromList [1, 2] :: PM.PrimArray Int)
+    {- , makeTest (PM.newUnliftedArray 1 1 :: PM.UnliftedArray Int) -}
+
+    {- Date Types -}
     , makeTest (ModifiedJulianDay 123456)
     , makeTest (TimeOfDay 7 30 0)
     , makeTest (LocalTime (ModifiedJulianDay 123456) (TimeOfDay 7 30 0))

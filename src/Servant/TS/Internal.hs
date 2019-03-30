@@ -16,6 +16,7 @@ import Data.Functor.Const (Const)
 import Data.Functor.Identity (Identity)
 import Data.Functor.Product (Product)
 import qualified Data.HashMap.Strict as HMS
+import Data.HashSet (HashSet)
 import Data.Int (Int8, Int16, Int32, Int64)
 import Data.IntMap (IntMap)
 import Data.IntSet (IntSet)
@@ -24,6 +25,11 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Monoid as Monoid
+import qualified Data.Primitive.Array as PM
+import qualified Data.Primitive.PrimArray as PM
+import qualified Data.Primitive.SmallArray as PM
+import qualified Data.Primitive.Types as PM
+import qualified Data.Primitive.UnliftedArray as PM
 import Data.Proxy
 import Data.Ratio (Ratio)
 {- import Data.Scientific (Scientific) -}
@@ -37,6 +43,7 @@ import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Lazy as LT
 import Data.Time
 import Data.Typeable
+import Data.UUID (UUID)
 import qualified Data.Vector as V
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Mutable as VM
@@ -465,29 +472,38 @@ instance (TsTypeable v) => TsTypeable (IntMap v) where
 instance (TsTypeableKey k, TsTypeable v) => TsTypeable (Map.Map k v) where
     tsTypeRep _ = makeMap (Proxy :: Proxy k) (Proxy :: Proxy v)
 
-{- instance TsType UUID -}
+instance TsTypeable UUID where
+    tsTypeRep _ = return TsString
 
 instance (TsTypeable a) => TsTypeable (V.Vector a) where
     tsTypeRep _ = TsArray <$> (tsTypeRep (Proxy :: Proxy a))
 
-{- instance VS.Vector -}
+instance (TsTypeable a) => TsTypeable (VS.Vector a) where
+    tsTypeRep _ = TsArray <$> (tsTypeRep (Proxy :: Proxy a))
 
-{- instance VP.Vector -}
+instance (TsTypeable a) => TsTypeable (VP.Vector a) where
+    tsTypeRep _ = TsArray <$> (tsTypeRep (Proxy :: Proxy a))
 
-{- instance VU.Vector -}
+instance (TsTypeable a) => TsTypeable (VU.Vector a) where
+    tsTypeRep _ = TsArray <$> (tsTypeRep (Proxy :: Proxy a))
 
-{- instance HashSet -}
+instance (TsTypeable a) => TsTypeable (HashSet a) where
+    tsTypeRep _ = TsArray <$> tsTypeRep (Proxy :: Proxy a)
 
 instance (TsTypeableKey k, TsTypeable v) => TsTypeable (HMS.HashMap k v) where
     tsTypeRep _ = makeMap (Proxy :: Proxy k) (Proxy :: Proxy v)
 
-{- instance PM.Array -}
+instance (TsTypeable a) => TsTypeable (PM.Array a) where
+    tsTypeRep _ = TsArray <$> tsTypeRep (Proxy :: Proxy a)
 
-{- instance PM.SmallArray -}
+instance (TsTypeable a) => TsTypeable (PM.SmallArray a) where
+    tsTypeRep _ = TsArray <$> tsTypeRep (Proxy :: Proxy a)
 
-{- instance PM.PrimArray -}
+instance (TsTypeable a) => TsTypeable (PM.PrimArray a) where
+    tsTypeRep _ = TsArray <$> tsTypeRep (Proxy :: Proxy a)
 
-{- instance PM.UnliftedArray -}
+instance (TsTypeable a) => TsTypeable (PM.UnliftedArray a) where
+    tsTypeRep _ = TsArray <$> tsTypeRep (Proxy :: Proxy a)
 
 instance TsTypeable Day where
     tsTypeRep _ = return TsString
