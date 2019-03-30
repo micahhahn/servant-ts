@@ -18,10 +18,13 @@ import qualified Data.Map as Map
 import qualified Data.Monoid as Monoid
 import Data.Ratio (Ratio, (%))
 import Data.Tagged
+import qualified Data.Semigroup as Semigroup
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Lazy as LT
 import Data.Time
+import Data.Time.Clock
+import Data.Time.LocalTime
 import Data.Proxy
 import Data.Vector (Vector)
 import qualified Data.Vector as Vector
@@ -79,12 +82,16 @@ instanceTests = testGroup "Aeson <-> TS instance isomorphic"
     , makeTest (Map.insert 1 "a" Map.empty :: Map Int Text) 
     , makeTest (Vector.fromList [1] :: Vector Int)
     , makeTest (HashMap.fromList [("a", 1)] :: HashMap Text Int)
+    , makeTest (ModifiedJulianDay 123456)
+    , makeTest (TimeOfDay 7 30 0)
     , makeTest (LocalTime (ModifiedJulianDay 123456) (TimeOfDay 7 30 0))
-    {- NominalDiffTime -}
-    {- DiffTime -}
+    , makeTest (UTCTime (ModifiedJulianDay 123456) (secondsToDiffTime 24))
+    , makeTest (nominalDay)
+    , makeTest (secondsToDiffTime 24)
     , makeTest ((Monoid.Dual "a" `mappend` Monoid.Dual "b") :: Monoid.Dual Text)
     , makeTest ((Monoid.First Nothing `mappend` Monoid.First (Just "b")) :: Monoid.First Text)
     , makeTest ((Monoid.Last Nothing `mappend` Monoid.Last (Just "b")) :: Monoid.Last Text)
+    , makeTest ((Semigroup.Min 1 `mappend` 2) :: Semigroup.Min Int)
     , makeTest (Proxy :: Proxy Int)
     , makeTest (Tagged 1 :: Tagged Text Int)
     , makeTest ((1, "a") :: (Int, Text))

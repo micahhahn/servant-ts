@@ -27,6 +27,7 @@ import qualified Data.Monoid as Monoid
 import Data.Proxy
 import Data.Ratio (Ratio)
 {- import Data.Scientific (Scientific) -}
+import qualified Data.Semigroup as Semigroup
 import Data.Sequence (Seq)
 import Data.Set (Set)
 import Data.Tagged
@@ -488,16 +489,20 @@ instance (TsTypeableKey k, TsTypeable v) => TsTypeable (HMS.HashMap k v) where
 
 {- instance PM.UnliftedArray -}
 
-{- instance ToJSON Day where -}
+instance TsTypeable Day where
+    tsTypeRep _ = return TsString
 
-{- instance ToJSON TimeOfDay where -}
+instance TsTypeable TimeOfDay where
+    tsTypeRep _ = return TsString
 
 instance TsTypeable LocalTime where
     tsTypeRep _ = return TsString
 
-{- instance ToJSON ZonedTime where -}
+instance TsTypeable ZonedTime where
+    tsTypeRep _ = return TsString
 
-{- instance ToJSON UTCTime where -}
+instance TsTypeable UTCTime where
+    tsTypeRep _ = return TsString
 
 instance TsTypeable NominalDiffTime where
     tsTypeRep _ = return TsNumber
@@ -514,17 +519,23 @@ instance TsTypeable a => TsTypeable (Monoid.First a) where
 instance TsTypeable a => TsTypeable (Monoid.Last a) where
     tsTypeRep _ = tsTypeRep (Proxy :: Proxy a)
 
-{- instance ToJSON a => ToJSON (Semigroup.Min a) where -}
+instance TsTypeable a => TsTypeable (Semigroup.Min a) where
+    tsTypeRep _ = tsTypeRep (Proxy :: Proxy a)
 
-{- instance ToJSON a => ToJSON (Semigroup.Max a) where -}
+instance TsTypeable a => TsTypeable (Semigroup.Max a) where
+    tsTypeRep _ = tsTypeRep (Proxy :: Proxy a)
 
-{- instance ToJSON a => ToJSON (Semigroup.First a) where -}
+instance TsTypeable a => TsTypeable (Semigroup.First a) where
+    tsTypeRep _ = tsTypeRep (Proxy :: Proxy a)
 
-{- instance ToJSON a => ToJSON (Semigroup.Last a) where -}
+instance TsTypeable a => TsTypeable (Semigroup.Last a) where
+    tsTypeRep _ = tsTypeRep (Proxy :: Proxy a)
 
-{- instance ToJSON a => ToJSON (Semigroup.WrappedMonoid a) where -}
+instance TsTypeable a => TsTypeable (Semigroup.WrappedMonoid a) where
+    tsTypeRep _ = tsTypeRep (Proxy :: Proxy a)
 
-{- instance ToJSON a => ToJSON (Semigroup.Option a) where -}
+instance TsTypeable a => TsTypeable (Semigroup.Option a) where
+    tsTypeRep _ = tsTypeRep (Proxy :: Proxy a)
 
 instance TsTypeable (Proxy a) where
     tsTypeRep _ = return TsNull
