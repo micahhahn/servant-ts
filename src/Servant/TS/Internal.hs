@@ -107,7 +107,6 @@ tsTypeName TsNever = "never"
 tsTypeName TsBoolean = "boolean"
 tsTypeName TsNumber = "number"
 tsTypeName TsString = "string"
-tsTypeName (TsLiteral n) = n
 tsTypeName (TsStringLiteral n) = "\"" <> n <> "\""
 tsTypeName (TsNullable t) = tsTypeName t {- <> "?" -}
 tsTypeName (TsRef t) = tsCustomTypeName t 
@@ -235,7 +234,6 @@ data TsType = TsVoid
             | TsBoolean
             | TsNumber
             | TsString
-            | TsLiteral Text
             | TsStringLiteral Text
             | TsUnion [TsType]
             | TsMap TsType
