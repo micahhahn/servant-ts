@@ -195,9 +195,6 @@ writeCustomType opts (tr, t) = let prefix = "export type " <> typeName
           writeCustomTypeDef :: Int -> TsType -> Text
           writeCustomTypeDef i (TsUnion ts) = Text.intercalate ("\n" <> i' <> Text.replicate i " " <> " | ") (writeCustomTypeDef i <$> ts)
 
-          writeCustomTypeDef i (TsUntaggedUnion ts) = let typeRep = Text.intercalate ("\n\t" <> Text.replicate i " " <> " | ") (writeCustomTypeDef i . snd <$> ts)
-                                                       in Text.intercalate "\n\n" (typeRep : (writeTypeGuard <$> ts))
-
           writeCustomTypeDef i (TsObject ts) = "{ " <> Text.intercalate ", " ((\(n, t) -> n <> ": " <> writeCustomTypeDef i t) <$> ts) <> " }"
 
           writeCustomTypeDef i (TsTuple ts) = let tuple = Text.intercalate ", " $ writeCustomTypeDef i <$> ts
@@ -241,7 +238,6 @@ data TsType = TsVoid
             | TsLiteral Text
             | TsStringLiteral Text
             | TsUnion [TsType]
-            | TsUntaggedUnion [(Text, TsType)]
             | TsMap TsType
             | TsNullable TsType
             | TsArray TsType
