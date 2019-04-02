@@ -42,6 +42,7 @@ import qualified Data.Text as Text
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Lazy as LT
 import Data.Time
+import Data.Tree
 import Data.Typeable
 import Data.UUID (UUID)
 import qualified Data.Vector as V
@@ -180,22 +181,14 @@ writeEndpoint opts t = do
           writeTsType TsNumber = "number"
           writeTsType TsString = "string"
           writeTsType (TsStringLiteral n) = "\"" <> n <> "\"" 
-          {- writeTsType (TsTaggedUnion _ ts) = Text.intercalate " | " (writeTsType <$> ts) -}
           writeTsType (TsNullable t) = (writeTsType t) <> " | null"
 
           quote :: Text -> Text
           quote s = makeQuote opts <> s <> makeQuote opts
 
-untagUnion :: TsType -> TsType
-untagUnion (TsTaggedUnion tn ts) = TsUnion $ (\(n, t) -> case t of 
-                                                             (TsObject ts') -> TsObject ((tn, TsStringLiteral n): ts')
-                                                             (TsTuple ts') -> TsObject [(tn, TsStringLiteral n), ("contents", TsTuple ts')]
-                                             ) <$> ts 
-untagUnion t = t
-
 writeCustomType :: TsGenOptions -> (TypeRep, TsType) -> Text
 writeCustomType opts (tr, t) = let prefix = "export type " <> typeName
-                                in i' <> prefix <> " = " <> writeCustomTypeDef (Text.length prefix) (untagUnion t) <> "\n"
+                                in i' <> prefix <> " = " <> writeCustomTypeDef (Text.length prefix) t <> "\n"
     where i' = makeIndent opts
           typeName = tsUnqualifiedCustomTypeName tr
          
@@ -249,7 +242,6 @@ data TsType = TsVoid
             | TsStringLiteral Text
             | TsUnion [TsType]
             | TsUntaggedUnion [(Text, TsType)]
-            | TsTaggedUnion Text {- tag field name -} [(Text, TsType)]
             | TsMap TsType
             | TsNullable TsType
             | TsArray TsType
@@ -288,8 +280,14 @@ instance (Datatype a, TsConstructor c) => TsDatatype (D1 a c) where
     tsDatatype c@(M1 r) t = do
         cons <- tsConstructor r
         let tsType = if length cons == 1 then snd . head $ cons
-                                         else TsTaggedUnion "tag" cons
-        TsContext (TsRef t) (Map.insert t tsType Map.empty)
+                                         else TsUnion (makeUnion <$> cons)
+        TsContext (TsRef t) (Map.insert t tsType Map.empty)    
+
+        where makeUnion (n, (TsObject ts')) = TsObject (("tag", TsStringLiteral n): ts')
+              makeUnion (n, (TsTuple ts')) = case ts' of
+                                                 [] ->  TsObject [("tag", TsStringLiteral n)]
+                                                 _ -> TsObject [("tag", TsStringLiteral n), ("contents", TsTuple ts')] 
+              makeUnion (n, t) = TsObject [("tag", TsStringLiteral n), ("contents", t)]
 
 class TsConstructor a where
     tsConstructor :: a p -> TsContext [(Text, TsType)]
@@ -467,7 +465,12 @@ makeMap k v = do
 instance (TsTypeable v) => TsTypeable (IntMap v) where
     tsTypeRep _ = makeMap (Proxy :: Proxy Int) (Proxy :: Proxy v)
 
-{- instance TsType Tree where -}
+instance (TsTypeable a, Typeable a) => TsTypeable (Tree a) where
+    tsTypeRep _ = do
+        let tr = typeRep (Proxy :: Proxy (Tree a))
+        ta <- tsTypeRep (Proxy :: Proxy a)
+        _ <- TsContext () (Map.singleton tr (TsTuple [ta, TsArray (TsRef tr)]))
+        return (TsRef tr)
 
 instance (TsTypeableKey k, TsTypeable v) => TsTypeable (Map.Map k v) where
     tsTypeRep _ = makeMap (Proxy :: Proxy k) (Proxy :: Proxy v)

@@ -32,6 +32,7 @@ import qualified Data.Text.Lazy as LT
 import Data.Time
 import Data.Time.Clock
 import Data.Time.LocalTime
+import Data.Tree (Tree(..))
 import Data.Proxy
 import Data.UUID as UUID
 import Data.Vector (Vector)
@@ -92,16 +93,19 @@ instanceTests = testGroup "Aeson <-> TS instance isomorphic"
     {- , makeTest (Set [1]) -}
     {-, makeTest (IntSet [1]) -}
     {- IntMap -}
-    {- Tree -}
+    , makeTest (Node 1 [Node 2 [], Node 3 []] :: Tree Int)
     , makeTest (Map.insert 1 "a" Map.empty :: Map Int Text) 
 
     {- UUID -}
     , makeTest (UUID.fromWords 1 2 3 4)
 
+    {- vector -}
     , makeTest (V.fromList [1] :: V.Vector Int)
     , makeTest (VS.fromList [1] :: VS.Vector Int)
     , makeTest (VP.fromList [1] :: VP.Vector Int)
     , makeTest (VU.fromList [1] :: VU.Vector Int)
+
+
     , makeTest (HS.singleton 1 :: HS.HashSet Int)
     , makeTest (HashMap.fromList [("a", 1)] :: HashMap Text Int)
 

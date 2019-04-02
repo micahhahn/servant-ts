@@ -14,17 +14,11 @@ import Test.Tasty.HUnit
 
 import Servant.TS
 
+import Servant.TS.GenericTests
 import Servant.TS.InstanceTests
 
 main = defaultMain tests
 
-data X = X Int Bool Text
-    deriving (Generic, Typeable, ToJSON, TsTypeable)
-
-derivingTests :: TestTree
-derivingTests = testGroup "Aeson <-> TS deriving isomorphic" 
-    [ {- testCase "Basic unnamed type" $ makeTest (X 0 False "a") -}]
-
 tests :: TestTree
 tests = testGroup "Aeson <-> TS" 
-    [ instanceTests, derivingTests ]
+    [ instanceTests, genericTests ]
