@@ -17,7 +17,7 @@ type SampleApi = "union" :> Get '[JSON] TestUnion
 
 data TestUnion = UnionA Int
                | UnionB { fieldA :: Text, fieldB :: Int}
-               deriving (Generic, Typeable, TsTypeable)
+               deriving (Generic, Typeable, TsStrategy 'TsGeneric, TsTypeable)
 
 main :: IO ()
 main = TIO.putStrLn (tsForAPI (Proxy :: Proxy SampleApi) defaultTsGenOptions)

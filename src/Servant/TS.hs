@@ -1,6 +1,8 @@
 module Servant.TS (
     tsForAPI,
     TsTypeable(..),
+    TsStrategy(..),
+    TsDerivingStrategy(..),
     TsContext (..),
     TsType(..),
     TsGenOptions(..),
