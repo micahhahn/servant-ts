@@ -30,6 +30,8 @@ dependencies:
 - primitive
 - uuid
 
+- recursion-schemes
+
 - servant
 - servant-foreign
 - aeson

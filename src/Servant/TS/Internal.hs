@@ -1,6 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -10,6 +11,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -19,6 +21,7 @@ module Servant.TS.Internal where
 import Data.Fixed (Fixed, HasResolution)
 import Data.Functor.Compose (Compose)
 import Data.Functor.Const (Const)
+import Data.Functor.Foldable
 import Data.Functor.Identity (Identity)
 import Data.Functor.Product (Product)
 import qualified Data.HashMap.Strict as HMS
@@ -249,7 +252,28 @@ data TsType = TsVoid
             | TsTuple [TsType]
             | TsRef TypeRep
             | TsGenericArg Int
-    deriving (Show)
+    deriving (Show, Eq, Generic)
+
+data TsTypeF a = TsVoidF
+               | TsNeverF
+               | TsNullF
+               | TsBooleanF
+               | TsNumberF
+               | TsStringF
+               | TsStringLiteralF Text
+               | TsUnionF [a]
+               | TsMapF a
+               | TsNullableF a
+               | TsArrayF a
+               | TsObjectF [(Text, a)]
+               | TsTupleF [a]
+               | TsRefF TypeRep
+               | TsGenericArgF Int
+    deriving (Show, Eq, Functor, Generic)
+
+type instance Base TsType = TsTypeF
+instance Recursive TsType
+instance Corecursive TsType
 
 data TsContext a = TsContext a (Map TypeRep TsType)
     deriving (Show, Functor)
