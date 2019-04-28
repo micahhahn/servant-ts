@@ -118,7 +118,7 @@ tsTypeName TsNumber = "number"
 tsTypeName TsString = "string"
 tsTypeName (TsStringLiteral n) = "\"" <> n <> "\""
 tsTypeName (TsNullable t) = tsTypeName t {- <> "?" -}
-tsTypeName (TsRef t) = tsCustomTypeName t 
+tsTypeName (TsRef t _) = tsCustomTypeName t 
 tsTypeName (TsArray t) = "Array<" <> tsTypeName t <> ">"
 tsTypeName (TsMap t) = "{[key: string]: " <> tsTypeName t <> "}"
 
@@ -250,7 +250,7 @@ data TsType = TsVoid
             | TsArray TsType
             | TsObject [(Text, TsType)]
             | TsTuple [TsType]
-            | TsRef TypeRep
+            | TsRef TypeRep [TsType]
             | TsGenericArg Int
     deriving (Show, Eq, Generic)
 
@@ -267,7 +267,7 @@ data TsTypeF a = TsVoidF
                | TsArrayF a
                | TsObjectF [(Text, a)]
                | TsTupleF [a]
-               | TsRefF TypeRep
+               | TsRefF TypeRep [TsType]
                | TsGenericArgF Int
     deriving (Show, Eq, Functor, Generic)
 
@@ -314,7 +314,7 @@ instance (Datatype a, TsConstructor c) => TsDatatype (D1 a c) where
         cons <- tsConstructor r
         let tsType = if length cons == 1 then snd . head $ cons
                                             else TsUnion (makeUnion <$> cons)
-        TsContext (TsRef t) (Map.insert t tsType Map.empty)    
+        TsContext (TsRef t []) (Map.insert t tsType Map.empty)    
 
         where makeUnion (n, (TsObject ts')) = TsObject (("tag", TsStringLiteral n): ts')
               makeUnion (n, (TsTuple ts')) = case ts' of
@@ -369,7 +369,7 @@ instance (Datatype a, TsConstructor1 c) => TsDatatype1 (D1 a c) where
         cons <- tsConstructor1 r
         let tsType = if length cons == 1 then snd . head $ cons
                                          else TsUnion (makeUnion <$> cons)
-        TsContext (TsRef t) (Map.insert t tsType Map.empty)    
+        TsContext (TsRef t []) (Map.insert t tsType Map.empty)    
 
         where makeUnion (n, (TsObject ts')) = TsObject (("tag", TsStringLiteral n): ts')
               makeUnion (n, (TsTuple ts')) = case ts' of
@@ -497,10 +497,10 @@ instance (Typeable a, TsTypeable a, Typeable b, TsTypeable b) => TsTypeable (Eit
     tsTypeRep _ = do 
         l <- tsTypeRep (Proxy :: Proxy a)
         r <- tsTypeRep (Proxy :: Proxy b)
-        let t = TsUnion [TsObject [("Left", l)], TsObject [("Right", r)]]
+        let t = TsUnion [TsObject [("Left", TsGenericArg 0)], TsObject [("Right", TsGenericArg 1)]]
         let tr = typeRep (Proxy :: Proxy (Either a b))
         _ <- TsContext () $ Map.insert tr t Map.empty
-        return (TsRef tr)
+        return (TsRef tr [l, r])
 
 instance (TsTypeable a) => TsTypeable [a] where
     tsTypeRep _ = TsArray <$> (tsTypeRep (Proxy :: Proxy a))
@@ -557,8 +557,8 @@ instance (TsTypeable a, Typeable a) => TsTypeable (Tree a) where
     tsTypeRep _ = do
         let tr = typeRep (Proxy :: Proxy (Tree a))
         ta <- tsTypeRep (Proxy :: Proxy a)
-        _ <- TsContext () (Map.singleton tr (TsTuple [ta, TsArray (TsRef tr)]))
-        return (TsRef tr)
+        _ <- TsContext () (Map.singleton tr (TsTuple [ta, TsArray (TsRef tr [])]))
+        return (TsRef tr [])
 
 instance (TsTypeableKey k, TsTypeable v) => TsTypeable (Map.Map k v) where
     tsTypeRep _ = makeMap (Proxy :: Proxy k) (Proxy :: Proxy v)

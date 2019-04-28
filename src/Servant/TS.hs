@@ -5,6 +5,7 @@ module Servant.TS (
     TsDerivingStrategy(..),
     TsContext (..),
     TsType(..),
+    TsTypeF(..),
     TsGenOptions(..),
     defaultTsGenOptions
 ) where

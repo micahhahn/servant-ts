@@ -16,9 +16,10 @@ import Servant.TS
 
 import Servant.TS.GenericTests
 import Servant.TS.InstanceTests
+import Servant.TS.TestHelperTests
 
 main = defaultMain tests
 
 tests :: TestTree
 tests = testGroup "Aeson <-> TS" 
-    [ instanceTests, genericTests ]
+    [ validationTests, instanceTests, genericTests ]

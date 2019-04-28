@@ -1,12 +1,14 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Servant.TS.TestHelpers (
-    makeTest
+    makeTest,
+    isValid
 ) where
 
 import Data.Aeson
 import Data.Bifunctor
 import Data.Either
+import Data.Functor.Foldable
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.HashMap.Strict (HashMap)
@@ -18,6 +20,13 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 import Servant.TS
+
+reduceGenerics :: [TsType] -> TsType -> TsType
+reduceGenerics ts t = cata f t
+
+    where f :: TsTypeF TsType -> TsType
+          f (TsGenericArgF i) = ts !! i 
+          f x = embed x
 
 {- Determines if a given JSON value can be represented as a TsType -}
 isValid :: TsContext TsType -> Value -> Either (TsContext TsType, Value) ()
@@ -44,8 +53,8 @@ isValid (TsContext (TsMap t) m) (Object m') = if all (\v -> isRight $ isValid (T
 isValid tt@(TsContext (TsTuple ts) m) (Array vs) = if (length ts /= length vs)
                                                    then Left (tt, (Array vs))
                                                    else second (const ()) . sequence $ (\(t, v) -> isValid (TsContext t m) v) <$> (zip ts (Vector.toList vs))
-isValid tt@(TsContext (TsRef t) m) v = case Map.lookup t m of
-    Just t' -> isValid (TsContext t' m) v
+isValid tt@(TsContext (TsRef t ts) m) v = case Map.lookup t m of
+    Just t' -> isValid (TsContext (reduceGenerics ts t') m) v
     Nothing -> Left (tt, v)
 isValid t v = Left (t, v)
 
