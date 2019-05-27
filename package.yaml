@@ -29,6 +29,7 @@ dependencies:
 - tagged
 - primitive
 - uuid
+- template-haskell
 
 - recursion-schemes
 
