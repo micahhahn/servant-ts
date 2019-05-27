@@ -12,11 +12,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Language.Haskell.TH
 
-import Debug.Trace
-
 import Servant.TS.Internal (TsTypeable(..), TsType(..), TsContext(..))
-
-{- TsContext T1 & TsContext [] -> Tscontext [T1] -}
 
 deriveTsJSON :: Options -> Name -> Q [Dec]
 deriveTsJSON opts name = do
