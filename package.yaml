@@ -30,6 +30,7 @@ dependencies:
 - primitive
 - uuid
 - template-haskell
+- th-abstraction
 
 - recursion-schemes
 

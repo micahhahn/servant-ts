@@ -11,6 +11,7 @@ import Data.Proxy
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Language.Haskell.TH
+import Language.Haskell.TH.Datatype
 
 import Servant.TS.Internal (TsTypeable(..), TsType(..), TsContext(..))
 
@@ -22,17 +23,19 @@ deriveTsJSON opts name = do
 
 deriveTsTypeable :: Options -> Name -> Q [Dec]
 deriveTsTypeable opts name = do
-    TyConI (DataD _ _ _ _ cons' _) <- reify name
+    DatatypeInfo { datatypeVars = vars
+                 , datatypeCons = cons } <- reifyDatatype name
     [d|
         instance TsTypeable $(conT name) where
-            tsTypeRep _ = $(if tagSingleConstructors opts || length cons' > 1
-                            then let mk = if allNullaryToStringTag opts && all isNullaryCons cons' then mkNullaryStringConsE else mkTaggedTypeE
-                                  in [| TsUnion <$> sequence $(ListE <$> sequence (mk <$> cons')) |]
-                            else mkTypeE (head cons'))
+            tsTypeRep _ = $(if tagSingleConstructors opts || length cons > 1
+                            then let mk = if allNullaryToStringTag opts && all isNullaryCons cons then mkNullaryStringConsE else mkTaggedTypeE
+                                  in [| TsUnion <$> sequence $(ListE <$> sequence (mk <$> cons)) |]
+                            else mkTypeE (head cons))
      |]
-    where mkTypeE :: Con -> Q Exp {- Q (TsContext TsType) -}
-          mkTypeE (NormalC _ ts) = makeTupleE (mkNormalFieldE <$> ts)
-          mkTypeE (RecC _ ts) = makeRecordE (mkRecordFieldE <$> ts)
+    where mkTypeE :: ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
+          mkTypeE c = case constructorVariant c of
+                          NormalConstructor -> makeTupleE (mkNormalFieldE <$> constructorFields c)
+                          RecordConstructor ns -> makeRecordE (mkRecordFieldE <$> zip ns (constructorFields c))
 
           makeTupleE :: [Q Exp] -> Q Exp {- [Q TsContext TsType] -> Q (TsContext TsType) -}
           makeTupleE ts = case ts of
@@ -44,34 +47,29 @@ deriveTsTypeable opts name = do
                            then [| snd $(head ts) |]
                            else [| TsObject <$> mapM (\(n, TsContext t m) -> TsContext (n, t) m) $(ListE <$> sequence ts) |]
 
-          isNullaryCons :: Con -> Bool
-          isNullaryCons (NormalC _ []) = True
-          isNullaryCons _ = False
+          isNullaryCons :: ConstructorInfo -> Bool
+          isNullaryCons = (\x -> length x == 0) . constructorFields 
 
-          mkNullaryStringConsE :: Con -> Q Exp
-          mkNullaryStringConsE (NormalC n []) = [| return . TsStringLiteral $ $(mkConStringE n) |]
+          mkNullaryStringConsE :: ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
+          mkNullaryStringConsE c = [| return . TsStringLiteral $ $(mkConStringE . constructorName $ c) |]
 
-          mkTaggedTypeE :: Con -> Q Exp {- Q (TsContext TsType) -}
-          mkTaggedTypeE c = let conE = [| TsStringLiteral $(mkConStringE $ getConName c) |]
+          mkTaggedTypeE :: ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
+          mkTaggedTypeE c = let conE = [| TsStringLiteral $(mkConStringE $ constructorName c) |]
                              in case sumEncoding opts of
-                                    (TaggedObject tn cn) -> case c of
-                                                                (NormalC n ts) -> case ts of
+                                    (TaggedObject tn cn) -> case constructorVariant c of
+                                                                NormalConstructor -> case constructorFields c of
                                                                                     [] -> [| pure $ TsObject [($(mkTextE tn), $conE)] |]
                                                                                     _ -> [| TsObject <$> sequence [pure ($(mkTextE tn), $conE), ((,) $(mkTextE cn) <$> $(mkTypeE c))] |]
-                                                                (RecC n ts) -> makeRecordE $ [| ($(mkTextE tn), return . TsStringLiteral $ $(mkConStringE n)) |] : (mkRecordFieldE <$> ts)
+                                                                RecordConstructor ns -> makeRecordE $ [| ($(mkTextE tn), return . TsStringLiteral $ $(mkConStringE $ constructorName c)) |] : (mkRecordFieldE <$> zip ns (constructorFields c))
                                     UntaggedValue -> mkTypeE c
-                                    ObjectWithSingleField -> [| (\x -> TsObject [($(mkConStringE $ getConName c), x)]) <$> $(mkTypeE c) |]
+                                    ObjectWithSingleField -> [| (\x -> TsObject [($(mkConStringE $ constructorName c), x)]) <$> $(mkTypeE c) |]
                                     TwoElemArray -> [| (\x -> TsTuple [$conE, x]) <$> $(mkTypeE c) |]
 
-          getConName :: Con -> Name
-          getConName (NormalC n _) = n
-          getConName (RecC n _) = n
+          mkRecordFieldE :: (Name, Type) -> Q Exp {- Q (Text, TsContext TsType) -}
+          mkRecordFieldE (n, t) = [| ($(mkFieldStringE n), tsTypeRep (Proxy :: Proxy $(return t))) |]
 
-          mkRecordFieldE :: (Name, Bang, Type) -> Q Exp {- Q (Text, TsContext TsType) -}
-          mkRecordFieldE (n, _, t) = [| ($(mkFieldStringE n), tsTypeRep (Proxy :: Proxy $(return t))) |]
-
-          mkNormalFieldE :: (Bang, Type) -> Q Exp 
-          mkNormalFieldE (_, t) = [| tsTypeRep (Proxy :: Proxy $(return t)) |]
+          mkNormalFieldE :: Type -> Q Exp {- Q (TsContext TsType) -}
+          mkNormalFieldE t = [| tsTypeRep (Proxy :: Proxy $(return t)) |]
 
           mkFieldStringE :: Name -> Q Exp {- Q String -}
           mkFieldStringE n = mkTextE . (fieldLabelModifier opts) . nameBase $ n
