@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -79,6 +80,10 @@ data TTagSingleConstructors = CTagSingleConstructors Int
                             deriving (Show)
 deriveTsJSON defaultOptions{tagSingleConstructors = True} ''TTagSingleConstructors
 
+data TPolyTest a = CPolyTest a
+                 deriving (Show)
+deriveTsJSON defaultOptions ''TPolyTest
+
 genericTests :: TestTree
 genericTests = testGroup "Aeson <-> TS generic deriving isomorphic"
     [ makeTest (CFieldLabelModifier 1)
@@ -113,4 +118,7 @@ genericTests = testGroup "Aeson <-> TS generic deriving isomorphic"
     , makeTest (CUnwrapUnaryRecords 1)
     
     , makeTest (CTagSingleConstructors 1)
+
+    , makeTest (CPolyTest (1 :: Int))
+    , makeTest (CPolyTest ("a" :: Text))
     ]

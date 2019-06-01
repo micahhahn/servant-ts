@@ -25,14 +25,30 @@ deriveTsTypeable :: Options -> Name -> Q [Dec]
 deriveTsTypeable opts name = do
     DatatypeInfo { datatypeVars = vars
                  , datatypeCons = cons } <- reifyDatatype name
-    [d|
-        instance TsTypeable $(conT name) where
-            tsTypeRep _ = $(if tagSingleConstructors opts || length cons > 1
+    stvs <- isExtEnabled ScopedTypeVariables
+    _ <- if not stvs && length vars > 0 
+         then fail $ "You must have the ScopedTypeVariables language extension enabled to derive TsTypeable for polymorphic type " ++ (nameBase name) ++ "." 
+         else return ()
+    mkInstanceD vars name (mkTsTypeRep cons)
+
+    where mkInstanceD :: [Type] -> Name -> Q Dec -> Q [Dec] {- Q  instance (TsTypeable a, ...) => TsTypable x where  -}
+          mkInstanceD ts n d = do
+              con <- conT n
+              n' <- [t| TsTypeable $(return $ foldl AppT (ConT n) ((\(SigT v _) -> v) <$> ts) ) |]
+              d' <- d
+              let ts' = (\(SigT v _) -> classPred ''TsTypeable [v]) <$> ts
+              return [InstanceD Nothing ts' n' [d']]
+                
+          mkTsTypeRep :: [ConstructorInfo] -> Q Dec
+          mkTsTypeRep cons = do
+              body <- [| $(if tagSingleConstructors opts || length cons > 1
                             then let mk = if allNullaryToStringTag opts && all isNullaryCons cons then mkNullaryStringConsE else mkTaggedTypeE
                                   in [| TsUnion <$> sequence $(ListE <$> sequence (mk <$> cons)) |]
                             else mkTypeE (head cons))
-     |]
-    where mkTypeE :: ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
+                       |]
+              return $ FunD ('tsTypeRep) [Clause [WildP] (NormalB body) []]
+            
+          mkTypeE :: ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
           mkTypeE c = case constructorVariant c of
                           NormalConstructor -> makeTupleE (mkNormalFieldE <$> constructorFields c)
                           RecordConstructor ns -> makeRecordE (mkRecordFieldE <$> zip ns (constructorFields c))
