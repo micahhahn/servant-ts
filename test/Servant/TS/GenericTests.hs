@@ -26,62 +26,62 @@ import Servant.TS.TestHelpers
 
 data TFieldTest = CFieldTest1 { fFieldTest1A :: Int, fFieldTest1B :: Int }
                 | CFieldTest2 { fFieldTest2A :: Bool, fFIeldTest2B :: Text }
-                deriving (Show)
+                deriving (Show, Typeable)
 deriveTsJSON defaultOptions ''TFieldTest
 
 data TFieldLabelModifier = CFieldLabelModifier { fFieldLabelModifier :: Int }
-                         deriving (Show)
+                         deriving (Show, Typeable)
 deriveTsJSON defaultOptions{fieldLabelModifier = drop 3} ''TFieldLabelModifier
 
 data TConstructorTagModifier = CTest1 Int
                              | CTest2 Bool
-                             deriving (Show)
+                             deriving (Show, Typeable)
 deriveTsJSON defaultOptions{constructorTagModifier = drop 1} ''TConstructorTagModifier
 
 data TAllNullaryToStringTag = CAllNullaryToStringTag1
                             | CAllNullaryToStringTag2
-                            deriving (Show)
+                            deriving (Show, Typeable)
 deriveTsJSON defaultOptions{allNullaryToStringTag = False} ''TAllNullaryToStringTag
 
 data TAllNullaryToStringTag' = CAllNullaryToStringTag1'
                              | CAllNullaryToStringTag2'
-                             deriving (Show)
+                             deriving (Show, Typeable)
 deriveTsJSON defaultOptions{allNullaryToStringTag = True} ''TAllNullaryToStringTag'
 
 data TOmitNothingFields = COmitNothingFields (Maybe Int)
-                        deriving (Show)
+                        deriving (Show, Typeable)
 deriveTsJSON defaultOptions{omitNothingFields = True} ''TOmitNothingFields
 
 data TTaggedObject = CTaggedObject1
                    | CTaggedObject2 Int
-                   deriving (Show)
+                   deriving (Show, Typeable)
 deriveTsJSON defaultOptions{sumEncoding = TaggedObject { tagFieldName = "ttag", contentsFieldName = "ccontents" } } ''TTaggedObject
 
 data TUntaggedValue = CUntaggedValue1 Int
                     | CUntaggedValue2 { fUntaggedValue2 :: Text }
-                    deriving (Show)
+                    deriving (Show, Typeable)
 deriveTsJSON defaultOptions{sumEncoding = UntaggedValue} ''TUntaggedValue
 
 data TObjectWithSingleField = CObjectWithSingleField1 Int Int
                             | CObjectWithSingleField2 { fField1 :: Text, fField2 :: Text }
-                            deriving (Show)
+                            deriving (Show, Typeable)
 deriveTsJSON defaultOptions{sumEncoding = ObjectWithSingleField} ''TObjectWithSingleField
 
 data TTwoElemArray = CTwoElemArray1 Int
                    | CTwoElemArray2 Text
-                   deriving (Show)
+                   deriving (Show, Typeable)
 deriveTsJSON defaultOptions{sumEncoding = TwoElemArray} ''TTwoElemArray
 
 data TUnwrapUnaryRecords = CUnwrapUnaryRecords { fUnwrapUnaryRecords :: Int }
-                         deriving (Show)
+                         deriving (Show, Typeable)
 deriveTsJSON defaultOptions{unwrapUnaryRecords = True} ''TUnwrapUnaryRecords
 
 data TTagSingleConstructors = CTagSingleConstructors Int
-                            deriving (Show)
+                            deriving (Show, Typeable)
 deriveTsJSON defaultOptions{tagSingleConstructors = True} ''TTagSingleConstructors
 
-data TPolyTest a = CPolyTest a
-                 deriving (Show)
+data TPolyTest a = CPolyTest a Int
+                 deriving (Show, Typeable)
 deriveTsJSON defaultOptions ''TPolyTest
 
 genericTests :: TestTree
@@ -119,6 +119,6 @@ genericTests = testGroup "Aeson <-> TS generic deriving isomorphic"
     
     , makeTest (CTagSingleConstructors 1)
 
-    , makeTest (CPolyTest (1 :: Int))
-    , makeTest (CPolyTest ("a" :: Text))
+    , makeTest (CPolyTest (1 :: Int) 7)
+    , makeTest (CPolyTest ("a" :: Text) 7)
     ]

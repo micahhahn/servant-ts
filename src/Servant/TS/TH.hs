@@ -32,7 +32,7 @@ deriveTsTypeable opts name = do
     _ <- if not stvs && length vars > 0 
          then fail $ "You must have the ScopedTypeVariables language extension enabled to derive TsTypeable for polymorphic type " ++ (nameBase name) ++ "." 
          else return ()
-    mkInstanceD vars name (mkTsTypeRep cons)
+    mkInstanceD vars name (mkTsTypeRep vars cons)
 
     where mkInstanceD :: [Type] -> Name -> Q Dec -> Q [Dec] {- Q  instance (TsTypeable a, ...) => TsTypable x where  -}
           mkInstanceD ts n d = do
@@ -43,23 +43,29 @@ deriveTsTypeable opts name = do
               return [InstanceD Nothing ts' n' [d']]
                 
           {- Collects all subtypes in a data declaration and generates one unqiue var name for each -}
-          collectSubtypes :: [ConstructorInfo] -> Q (Map Type Name)
-          collectSubtypes cs = Map.fromList <$> (sequence $ (\t -> (t,) <$> newName "ts") <$> (concat (constructorFields <$> cs)))
+          collectSubtypes :: Map Type ExpQ -> [ConstructorInfo] -> Q (Map Type Name)
+          collectSubtypes m cs = let subTypes = concat (constructorFields <$> cs)
+                                     filtered = filter (\x -> True {- not $ Map.member x m -}) subTypes
+                                  in Map.fromList <$> (sequence $ (\t -> (t,) <$> newName "ts") <$> filtered)
           
-          mkTsTypeRep :: [ConstructorInfo] -> Q Dec
-          mkTsTypeRep cons = do
-              ts <- collectSubtypes cons
-              body <- [| return $(if tagSingleConstructors opts || length cons > 1
-                                  then let mk = if allNullaryToStringTag opts && all isNullaryCons cons then mkNullaryStringConsE else mkTaggedTypeE ts
-                                        in [| TsUnion $(ListE <$> sequence (mk <$> cons)) |]
-                                  else mkTypeE ts (head cons))
-                       |]
+          mkTsTypeRep :: [Type] -> [ConstructorInfo] -> Q Dec
+          mkTsTypeRep vars cons = do
+              let generics = (\(SigT v _) -> v) <$> vars 
+              let genericArgs = Map.fromList $ (\x -> (snd x, [| TsGenericArg $(return . LitE . IntegerL . fst $ x) |])) <$> zip [0..] ((\(SigT v _) -> v) <$> vars) 
+              ts <- collectSubtypes genericArgs cons
+              let body = [| $(if tagSingleConstructors opts || length cons > 1
+                              then let mk = if allNullaryToStringTag opts && all isNullaryCons cons then mkNullaryStringConsE else mkTaggedTypeE (genericArgs, ts)
+                                    in [| TsUnion $(ListE <$> sequence (mk <$> cons)) |]
+                              else mkTypeE (genericArgs, ts) (head cons))
+                          |]
               
-              let dos = sequence $ (\(t, n) -> BindS (VarP n) <$> [| tsTypeRep (Proxy :: Proxy $(return t)) |]) <$> (Map.assocs ts)
-              doE <- DoE <$> ((++ [NoBindS body]) <$> dos)
-              return $ FunD ('tsTypeRep) [Clause [WildP] (NormalB doE) []]
+              let binds = (\(t, n) -> bindS (varP n) [| tsTypeRep (Proxy :: Proxy $(return t)) |]) <$> (Map.assocs ts)
+              let context = bindS wildP [| TsContext () (Map.singleton (typeRep (Proxy :: Proxy $(conT name))) $body) |]
+              let ref = [| return $ TsRef (typeRep (Proxy :: Proxy $(conT name))) $(return . ListE $ VarE . (ts Map.!) <$> generics) |]
+              let dos = doE (binds ++ [context, noBindS ref])
+              funD 'tsTypeRep [clause [wildP] (normalB dos) []]
             
-          mkTypeE :: Map Type Name -> ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
+          mkTypeE :: (Map Type ExpQ, Map Type Name) -> ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
           mkTypeE m c = case constructorVariant c of
                             NormalConstructor -> makeTupleE (mkNormalFieldE m <$> constructorFields c)
                             RecordConstructor ns -> makeRecordE (mkRecordFieldE m <$> zip ns (constructorFields c))
@@ -70,7 +76,7 @@ deriveTsTypeable opts name = do
                               ts' -> [| TsTuple $(ListE <$> sequence ts') |]
 
           makeRecordE :: [Q Exp] -> Q Exp {- [Q (Text, TsContext TsType)] -> Q (TsContext TsType) -}
-          makeRecordE ts = if (unwrapUnaryRecords opts) && length ts == 1 
+          makeRecordE ts = if (unwrapUnaryRecords opts) && length ts == 1
                            then [| snd $(head ts) |]
                            else [| TsObject $(ListE <$> sequence ts) |]
 
@@ -80,7 +86,7 @@ deriveTsTypeable opts name = do
           mkNullaryStringConsE :: ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
           mkNullaryStringConsE c = [| TsStringLiteral $(mkConStringE . constructorName $ c) |]
 
-          mkTaggedTypeE :: Map Type Name -> ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
+          mkTaggedTypeE :: (Map Type ExpQ, Map Type Name) -> ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
           mkTaggedTypeE m c = let conE = [| TsStringLiteral $(mkConStringE $ constructorName c) |]
                                in case sumEncoding opts of
                                       (TaggedObject tn cn) -> case constructorVariant c of
@@ -92,14 +98,16 @@ deriveTsTypeable opts name = do
                                       ObjectWithSingleField -> [| TsObject [($(mkConStringE $ constructorName c), $(mkTypeE m c))] |]
                                       TwoElemArray -> [| TsTuple [$conE, $(mkTypeE m c)] |]
 
-          mkRecordFieldE :: Map Type Name -> (Name, Type) -> Q Exp {- Q (Text, TsContext TsType) -}
-          mkRecordFieldE m (n, t) = [| ($(mkFieldStringE n), $(mkVarRef m t)) |]
+          mkRecordFieldE :: (Map Type ExpQ, Map Type Name) -> (Name, Type) -> Q Exp {- Q (Text, TsContext TsType) -}
+          mkRecordFieldE ms (n, t) = [| ($(mkFieldStringE n), $(mkVarRef ms t)) |]
 
-          mkNormalFieldE :: Map Type Name -> Type -> Q Exp {- Q (TsContext TsType) -}
+          mkNormalFieldE :: (Map Type ExpQ, Map Type Name) -> Type -> Q Exp {- Q (TsContext TsType) -}
           mkNormalFieldE = mkVarRef
 
-          mkVarRef :: Map Type Name -> Type -> Q Exp
-          mkVarRef m t = return . VarE $ m Map.! t
+          mkVarRef :: (Map Type ExpQ, Map Type Name) -> Type -> Q Exp
+          mkVarRef (genericMap, subtypeMap) t = case Map.lookup t genericMap of
+                                                    Just t' -> t'
+                                                    Nothing -> return . VarE $ subtypeMap Map.! t
 
           mkFieldStringE :: Name -> Q Exp {- Q String -}
           mkFieldStringE n = mkTextE . (fieldLabelModifier opts) . nameBase $ n
