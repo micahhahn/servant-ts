@@ -24,15 +24,16 @@ import Data.Functor.Const (Const)
 import Data.Functor.Foldable
 import Data.Functor.Identity (Identity)
 import Data.Functor.Product (Product)
-import qualified Data.HashMap.Strict as HMS
+import Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as HashMap
 import Data.HashSet (HashSet)
 import Data.Int (Int8, Int16, Int32, Int64)
 import Data.IntMap (IntMap)
 import Data.IntSet (IntSet)
 import Data.List (groupBy, sortBy)
 import Data.List.NonEmpty (NonEmpty)
-import Data.Map (Map)
-import qualified Data.Map as Map
+import Data.Map.Lazy (Map)
+import qualified Data.Map.Lazy as Map
 import qualified Data.Monoid as Monoid
 import qualified Data.Primitive.Array as PM
 import qualified Data.Primitive.PrimArray as PM
@@ -68,11 +69,13 @@ import Numeric.Natural (Natural)
 
 import Servant.Foreign
 
+import Servant.TS.Core
+
 -- Dummy type to parameterize instances
 data TypeScript
 
 instance (TsTypeable a) => HasForeignType TypeScript (TsContext TsType) a where
-    typeFor _ _ p = tsTypeRep p
+    typeFor _ _ p = undefined {- (tsTypeRep p) -}
 
 data TsGenQuotes = TsSingleQuotes
                  | TsDoubleQuotes
@@ -203,7 +206,7 @@ writeCustomType opts (tr, t) = let prefix = "export type " <> typeName
           writeCustomTypeDef :: Int -> TsType -> Text
           writeCustomTypeDef i (TsUnion ts) = Text.intercalate ("\n" <> i' <> Text.replicate i " " <> " | ") (writeCustomTypeDef i <$> ts)
 
-          writeCustomTypeDef i (TsObject ts) = "{ " <> Text.intercalate ", " ((\(n, t) -> n <> ": " <> writeCustomTypeDef i t) <$> ts) <> " }"
+          writeCustomTypeDef i (TsObject ts) = "{ " <> Text.intercalate ", " ((\(n, t) -> n <> ": " <> writeCustomTypeDef i t) <$> HashMap.toList ts) <> " }"
 
           writeCustomTypeDef i (TsTuple ts) = let tuple = Text.intercalate ", " $ writeCustomTypeDef i <$> ts
                                                 in if length ts == 1 then tuple else "[" <> tuple <> "]"
@@ -218,7 +221,7 @@ writeCustomType opts (tr, t) = let prefix = "export type " <> typeName
                                              in i' <> "export function is" <> n <> "($u: " <> typeName <> "): $u is " <> tr <> "\n" <>
                                                 i' <> "{\n" <>
                                                 i' <> i' <> "let $t = <" <> tr <> ">$u;\n" <>
-                                                i' <> i' <> "return " <> Text.intercalate " && " (("$t." <> ) . (<> " !== undefined") . fst <$> ts) <> ";\n" <>
+                                                i' <> i' <> "return " <> Text.intercalate " && " (("$t." <> ) . (<> " !== undefined") <$> HashMap.keys ts) <> ";\n" <>
                                                 i' <> "}"
 
 writeCustomTypes :: TsGenOptions -> Map TypeRep TsType -> Text
@@ -237,62 +240,12 @@ writeEndpoints opts ts = let (TsContext ts' m) = sequence (writeEndpoint opts <$
                             writeCustomTypes opts m <> "\n\n" <>
                             Text.intercalate "\n\n" ts' <> "\n"
 
-data TsType = TsVoid
-            | TsNever
-            | TsNull
-            | TsBoolean
-            | TsNumber
-            | TsString
-            | TsStringLiteral Text
-            | TsUnion [TsType]
-            | TsMap TsType
-            | TsNullable TsType
-            | TsArray TsType
-            | TsObject [(Text, TsType)]
-            | TsTuple [TsType]
-            | TsRef TypeRep [TsType]
-            | TsGenericArg Int
-    deriving (Show, Eq, Generic)
-
-data TsTypeF a = TsVoidF
-               | TsNeverF
-               | TsNullF
-               | TsBooleanF
-               | TsNumberF
-               | TsStringF
-               | TsStringLiteralF Text
-               | TsUnionF [a]
-               | TsMapF a
-               | TsNullableF a
-               | TsArrayF a
-               | TsObjectF [(Text, a)]
-               | TsTupleF [a]
-               | TsRefF TypeRep [TsType]
-               | TsGenericArgF Int
-    deriving (Show, Eq, Functor, Generic)
-
-type instance Base TsType = TsTypeF
-instance Recursive TsType
-instance Corecursive TsType
-
-data TsContext a = TsContext a (Map TypeRep TsType)
-    deriving (Show, Functor)
-
-instance Applicative TsContext where
-    pure a = TsContext a (Map.empty)
-    (<*>) (TsContext f m) (TsContext a m') = TsContext (f a) (Map.union m m')
-
-instance Monad TsContext where
-    return = pure
-    (>>=) (TsContext a m) f = let (TsContext a' m') = f a
-                               in TsContext a' (Map.union m m')
-
 sanitizeTSName :: Text -> Text
 sanitizeTSName = Text.replace "'" ""
 
 class TsTypeable a where
-    tsTypeRep :: Proxy a -> TsContext TsType
-    default tsTypeRep :: forall s. (TsStrategy s a) => Proxy a -> TsContext TsType
+    tsTypeRep :: Proxy a -> TsType
+    {-default tsTypeRep :: forall s. (TsStrategy s a) => Proxy a -> TsType
     tsTypeRep = deriveTsTypeRep @s
 
 data TsDerivingStrategy = TsGeneric 
@@ -412,21 +365,22 @@ instance (Selector a, TsTypeable c, Typeable c) => TsSelector1 (S1 a (K1 b c)) w
 
 instance (Selector a) => TsSelector1 (S1 a Par1) where
     tsSelector1 q = return [(Text.pack . selName $ q, TsGenericArg 0)]
+-}
 
 instance TsTypeable Bool where
-    tsTypeRep _ = return TsBoolean
+    tsTypeRep _ = TsBoolean
 
 instance TsTypeable Ordering where
-    tsTypeRep _ = return TsString
+    tsTypeRep _ = TsString
 
 instance TsTypeable () where
-    tsTypeRep _ = return $ TsArray TsNever
+    tsTypeRep _ = TsArray TsNever
 
 instance TsTypeable Char where
-    tsTypeRep _ = return TsString
+    tsTypeRep _ = TsString
 
 instance TsTypeable Double where
-    tsTypeRep _ = return TsNumber
+    tsTypeRep _ = TsNumber
 
 {-
 instance TsType Number where
@@ -434,79 +388,74 @@ instance TsType Number where
 -}
 
 instance TsTypeable Float where
-    tsTypeRep _ = return TsNumber
+    tsTypeRep _ = TsNumber
 
 instance (TsTypeable a, Integral a) => TsTypeable (Ratio a) where
-    tsTypeRep _ = return $ TsObject [("denominator", TsNumber), ("numerator", TsNumber)]
+    tsTypeRep _ = TsObject $ HashMap.fromList [("denominator", TsNumber), ("numerator", TsNumber)]
     
 instance (HasResolution a) => TsTypeable (Fixed a) where
-    tsTypeRep _ = return TsNumber
+    tsTypeRep _ = TsNumber
 
 instance TsTypeable Int where
-    tsTypeRep _ = return TsNumber
+    tsTypeRep _ = TsNumber
 
 instance TsTypeable Integer where 
-    tsTypeRep _ = return TsNumber
+    tsTypeRep _ = TsNumber
 
 instance TsTypeable Natural where
-    tsTypeRep _ = return TsNumber
+    tsTypeRep _ = TsNumber
 
 instance TsTypeable Int8 where
-    tsTypeRep _ = return TsNumber
+    tsTypeRep _ = TsNumber
 
 instance TsTypeable Int16 where
-    tsTypeRep _ = return TsNumber
+    tsTypeRep _ = TsNumber
 
 instance TsTypeable Int32 where
-    tsTypeRep _ = return TsNumber
+    tsTypeRep _ = TsNumber
 
 instance TsTypeable Int64 where
-    tsTypeRep _ = return TsNumber
+    tsTypeRep _ = TsNumber
 
 instance TsTypeable Word where
-    tsTypeRep _ = return TsNumber
+    tsTypeRep _ = TsNumber
 
 instance TsTypeable Word8 where
-    tsTypeRep _ = return TsNumber
+    tsTypeRep _ = TsNumber
 
 instance TsTypeable Word16 where
-    tsTypeRep _ = return TsNumber
+    tsTypeRep _ = TsNumber
 
 instance TsTypeable Word32 where
-    tsTypeRep _ = return TsNumber
+    tsTypeRep _ = TsNumber
 
 instance TsTypeable Word64 where
-    tsTypeRep _ = return TsNumber
+    tsTypeRep _ = TsNumber
 
 instance TsTypeable CTime where
-    tsTypeRep _ = return TsNumber
+    tsTypeRep _ = TsNumber
 
 instance TsTypeable Text where
-    tsTypeRep _ = return TsString
+    tsTypeRep _ = TsString
 
 instance TsTypeable LT.Text where
-    tsTypeRep _ = return TsString
+    tsTypeRep _ = TsString
 
 instance TsTypeable Version where
-    tsTypeRep _ = return TsString
+    tsTypeRep _ = TsString
 
 instance (TsTypeable a) => TsTypeable (Maybe a) where
-    tsTypeRep _ = TsNullable <$> (tsTypeRep (Proxy :: Proxy a))
+    tsTypeRep _ = TsNullable (tsTypeRep (Proxy :: Proxy a))
 
 instance (Typeable a, TsTypeable a, Typeable b, TsTypeable b) => TsTypeable (Either a b) where
-    tsTypeRep _ = do 
-        l <- tsTypeRep (Proxy :: Proxy a)
-        r <- tsTypeRep (Proxy :: Proxy b)
-        let t = TsUnion [TsObject [("Left", TsGenericArg 0)], TsObject [("Right", TsGenericArg 1)]]
-        let tr = typeRep (Proxy :: Proxy (Either a b))
-        _ <- TsContext () $ Map.insert tr t Map.empty
-        return (TsRef tr [l, r])
+    tsTypeRep _ = let t = TsUnion [TsObject $ HashMap.fromList [("Left", TsGenericArg 0)], TsObject $ HashMap.fromList [("Right", TsGenericArg 1)]]
+                   in TsNamedType (typeRep (Proxy :: Proxy Either)) [tsTypeRep (Proxy :: Proxy a), tsTypeRep (Proxy :: Proxy b)] t
 
 instance (TsTypeable a) => TsTypeable [a] where
-    tsTypeRep _ = TsArray <$> (tsTypeRep (Proxy :: Proxy a))
+    tsTypeRep _ = TsArray (tsTypeRep (Proxy :: Proxy a))
 
 instance (TsTypeable a) => TsTypeable (NonEmpty a) where
-    tsTypeRep _ = TsArray <$> (tsTypeRep (Proxy :: Proxy a))
+    tsTypeRep _ = TsArray (tsTypeRep (Proxy :: Proxy a))
 
 {-
 instance TsType Scientific where
@@ -528,94 +477,87 @@ instance (TsTypeable (f (g b))) => TsTypeable (Compose f g b) where
     tsTypeRep _ = tsTypeRep (Proxy :: Proxy (f (g b)))
 
 instance (TsTypeable (f a), TsTypeable (g a)) => TsTypeable (Product f g a) where
-    tsTypeRep _ = do
-        l <- tsTypeRep (Proxy :: Proxy (f a))
-        r <- tsTypeRep (Proxy :: Proxy (g a))
-        return $ TsTuple [l, r]
+    tsTypeRep _ = TsTuple [tsTypeRep (Proxy :: Proxy (f a)), tsTypeRep (Proxy :: Proxy (g a))]
 
 instance (TsTypeable a) => TsTypeable (Seq a) where
-    tsTypeRep _ = TsArray <$> (tsTypeRep (Proxy :: Proxy a))
+    tsTypeRep _ = TsArray (tsTypeRep (Proxy :: Proxy a))
 
 instance (TsTypeable a) => TsTypeable (Set a) where
-    tsTypeRep _ = TsArray <$> (tsTypeRep (Proxy :: Proxy a))
+    tsTypeRep _ = TsArray (tsTypeRep (Proxy :: Proxy a))
 
 instance TsTypeable IntSet where
-    tsTypeRep _ = return $ TsArray TsNumber
+    tsTypeRep _ = TsArray TsNumber
 
-makeMap :: (TsTypeableKey k, TsTypeable v) => Proxy k -> Proxy v -> TsContext TsType
-makeMap k v = do
-    kt <- tsKeyTypeRep k
-    vt <- tsTypeRep v
-    case kt of
-        TsString -> return $ TsMap vt
-        _ -> return $ TsArray (TsTuple [kt, vt])
+makeMap :: (TsTypeableKey k, TsTypeable v) => Proxy k -> Proxy v -> TsType
+makeMap k v = let kt = tsKeyTypeRep k
+                  vt = tsTypeRep v
+               in case kt of
+                      TsString -> TsMap vt
+                      _ -> TsArray (TsTuple [kt, vt])
 
 instance (TsTypeable v) => TsTypeable (IntMap v) where
     tsTypeRep _ = makeMap (Proxy :: Proxy Int) (Proxy :: Proxy v)
 
 instance (TsTypeable a, Typeable a) => TsTypeable (Tree a) where
-    tsTypeRep _ = do
-        let tr = typeRep (Proxy :: Proxy (Tree a))
-        ta <- tsTypeRep (Proxy :: Proxy a)
-        _ <- TsContext () (Map.singleton tr (TsTuple [ta, TsArray (TsRef tr [])]))
-        return (TsRef tr [])
+    tsTypeRep _ = let t = TsTuple [TsGenericArg 0, TsArray (tsTypeRep (Proxy :: Proxy (Tree a)))]
+                   in TsNamedType (typeRep (Proxy :: Proxy Tree)) [tsTypeRep (Proxy :: Proxy a)] t
 
 instance (TsTypeableKey k, TsTypeable v) => TsTypeable (Map.Map k v) where
     tsTypeRep _ = makeMap (Proxy :: Proxy k) (Proxy :: Proxy v)
 
 instance TsTypeable UUID where
-    tsTypeRep _ = return TsString
+    tsTypeRep _ = TsString
 
 instance (TsTypeable a) => TsTypeable (V.Vector a) where
-    tsTypeRep _ = TsArray <$> (tsTypeRep (Proxy :: Proxy a))
+    tsTypeRep _ = TsArray (tsTypeRep (Proxy :: Proxy a))
 
 instance (TsTypeable a) => TsTypeable (VS.Vector a) where
-    tsTypeRep _ = TsArray <$> (tsTypeRep (Proxy :: Proxy a))
+    tsTypeRep _ = TsArray (tsTypeRep (Proxy :: Proxy a))
 
 instance (TsTypeable a) => TsTypeable (VP.Vector a) where
-    tsTypeRep _ = TsArray <$> (tsTypeRep (Proxy :: Proxy a))
+    tsTypeRep _ = TsArray (tsTypeRep (Proxy :: Proxy a))
 
 instance (TsTypeable a) => TsTypeable (VU.Vector a) where
-    tsTypeRep _ = TsArray <$> (tsTypeRep (Proxy :: Proxy a))
+    tsTypeRep _ = TsArray (tsTypeRep (Proxy :: Proxy a))
 
 instance (TsTypeable a) => TsTypeable (HashSet a) where
-    tsTypeRep _ = TsArray <$> tsTypeRep (Proxy :: Proxy a)
+    tsTypeRep _ = TsArray (tsTypeRep (Proxy :: Proxy a))
 
-instance (TsTypeableKey k, TsTypeable v) => TsTypeable (HMS.HashMap k v) where
+instance (TsTypeableKey k, TsTypeable v) => TsTypeable (HashMap k v) where
     tsTypeRep _ = makeMap (Proxy :: Proxy k) (Proxy :: Proxy v)
 
 instance (TsTypeable a) => TsTypeable (PM.Array a) where
-    tsTypeRep _ = TsArray <$> tsTypeRep (Proxy :: Proxy a)
+    tsTypeRep _ = TsArray (tsTypeRep (Proxy :: Proxy a))
 
 instance (TsTypeable a) => TsTypeable (PM.SmallArray a) where
-    tsTypeRep _ = TsArray <$> tsTypeRep (Proxy :: Proxy a)
+    tsTypeRep _ = TsArray (tsTypeRep (Proxy :: Proxy a))
 
 instance (TsTypeable a) => TsTypeable (PM.PrimArray a) where
-    tsTypeRep _ = TsArray <$> tsTypeRep (Proxy :: Proxy a)
+    tsTypeRep _ = TsArray (tsTypeRep (Proxy :: Proxy a))
 
 instance (TsTypeable a) => TsTypeable (PM.UnliftedArray a) where
-    tsTypeRep _ = TsArray <$> tsTypeRep (Proxy :: Proxy a)
+    tsTypeRep _ = TsArray (tsTypeRep (Proxy :: Proxy a))
 
 instance TsTypeable Day where
-    tsTypeRep _ = return TsString
+    tsTypeRep _ = TsString
 
 instance TsTypeable TimeOfDay where
-    tsTypeRep _ = return TsString
+    tsTypeRep _ = TsString
 
 instance TsTypeable LocalTime where
-    tsTypeRep _ = return TsString
+    tsTypeRep _ = TsString
 
 instance TsTypeable ZonedTime where
-    tsTypeRep _ = return TsString
+    tsTypeRep _ = TsString
 
 instance TsTypeable UTCTime where
-    tsTypeRep _ = return TsString
+    tsTypeRep _ = TsString
 
 instance TsTypeable NominalDiffTime where
-    tsTypeRep _ = return TsNumber
+    tsTypeRep _ = TsNumber
 
 instance TsTypeable DiffTime where
-    tsTypeRep _ = return TsNumber
+    tsTypeRep _ = TsNumber
 
 instance TsTypeable a => TsTypeable (Monoid.Dual a) where
     tsTypeRep _ = tsTypeRep (Proxy :: Proxy a)
@@ -645,267 +587,137 @@ instance TsTypeable a => TsTypeable (Semigroup.Option a) where
     tsTypeRep _ = tsTypeRep (Proxy :: Proxy a)
 
 instance TsTypeable (Proxy a) where
-    tsTypeRep _ = return TsNull
+    tsTypeRep _ = TsNull
 
 instance TsTypeable b => TsTypeable (Tagged a b) where
     tsTypeRep _ = tsTypeRep (Proxy :: Proxy b)
 
+append :: TsType -> TsType -> TsType
+append (TsTuple ts) t = TsTuple (ts ++ [t])
+
 instance (TsTypeable a, TsTypeable b) => TsTypeable (a, b) where
-    tsTypeRep _ = do
-        a' <- tsTypeRep (Proxy :: Proxy a)
-        b' <- tsTypeRep (Proxy :: Proxy b)
-        return $ TsTuple [a', b']
+    tsTypeRep _ = TsTuple [tsTypeRep (Proxy :: Proxy a), tsTypeRep (Proxy :: Proxy b)]
 
 instance (TsTypeable a, TsTypeable b, TsTypeable c) => TsTypeable (a, b, c) where
-    tsTypeRep _ = do
-        a' <- tsTypeRep (Proxy :: Proxy a)
-        b' <- tsTypeRep (Proxy :: Proxy b)
-        c' <- tsTypeRep (Proxy :: Proxy c)
-        return $ TsTuple [a', b', c']
+    tsTypeRep _ = append (tsTypeRep (Proxy :: Proxy (a, b))) (tsTypeRep (Proxy :: Proxy c))
 
 instance (TsTypeable a, TsTypeable b, TsTypeable c, TsTypeable d) => TsTypeable (a, b, c, d) where
-    tsTypeRep _ = do
-        a' <- tsTypeRep (Proxy :: Proxy a)
-        b' <- tsTypeRep (Proxy :: Proxy b)
-        c' <- tsTypeRep (Proxy :: Proxy c)
-        d' <- tsTypeRep (Proxy :: Proxy d)
-        return $ TsTuple [a', b', c', d']
+    tsTypeRep _ = append (tsTypeRep (Proxy :: Proxy (a, b, c))) (tsTypeRep (Proxy :: Proxy d))
 
 instance (TsTypeable a, TsTypeable b, TsTypeable c, TsTypeable d, TsTypeable e) => TsTypeable (a, b, c, d, e) where
-    tsTypeRep _ = do
-        a' <- tsTypeRep (Proxy :: Proxy a)
-        b' <- tsTypeRep (Proxy :: Proxy b)
-        c' <- tsTypeRep (Proxy :: Proxy c)
-        d' <- tsTypeRep (Proxy :: Proxy d)
-        e' <- tsTypeRep (Proxy :: Proxy e)
-        return $ TsTuple [a', b', c', d', e']
+    tsTypeRep _ = append (tsTypeRep (Proxy :: Proxy (a, b, c, d))) (tsTypeRep (Proxy :: Proxy e))
 
 instance (TsTypeable a, TsTypeable b, TsTypeable c, TsTypeable d, TsTypeable e, TsTypeable f) => TsTypeable (a, b, c, d, e, f) where
-    tsTypeRep _ = do
-        a' <- tsTypeRep (Proxy :: Proxy a)
-        b' <- tsTypeRep (Proxy :: Proxy b)
-        c' <- tsTypeRep (Proxy :: Proxy c)
-        d' <- tsTypeRep (Proxy :: Proxy d)
-        e' <- tsTypeRep (Proxy :: Proxy e)
-        f' <- tsTypeRep (Proxy :: Proxy f)
-        return $ TsTuple [a', b', c', d', e', f']
+    tsTypeRep _ = append (tsTypeRep (Proxy :: Proxy (a, b, c, d, e))) (tsTypeRep (Proxy :: Proxy f))
 
 instance (TsTypeable a, TsTypeable b, TsTypeable c, TsTypeable d, TsTypeable e, TsTypeable f, TsTypeable g) => TsTypeable (a, b, c, d, e, f, g) where
-    tsTypeRep _ = do
-        a' <- tsTypeRep (Proxy :: Proxy a)
-        b' <- tsTypeRep (Proxy :: Proxy b)
-        c' <- tsTypeRep (Proxy :: Proxy c)
-        d' <- tsTypeRep (Proxy :: Proxy d)
-        e' <- tsTypeRep (Proxy :: Proxy e)
-        f' <- tsTypeRep (Proxy :: Proxy f)
-        g' <- tsTypeRep (Proxy :: Proxy g)
-        return $ TsTuple [a', b', c', d', e', f', g']
+    tsTypeRep _ = append (tsTypeRep (Proxy :: Proxy (a, b, c, d, e, f))) (tsTypeRep (Proxy :: Proxy g))
 
 instance (TsTypeable a, TsTypeable b, TsTypeable c, TsTypeable d, TsTypeable e, TsTypeable f, TsTypeable g, TsTypeable h) => TsTypeable (a, b, c, d, e, f, g, h) where
-    tsTypeRep _ = do
-        a' <- tsTypeRep (Proxy :: Proxy a)
-        b' <- tsTypeRep (Proxy :: Proxy b)
-        c' <- tsTypeRep (Proxy :: Proxy c)
-        d' <- tsTypeRep (Proxy :: Proxy d)
-        e' <- tsTypeRep (Proxy :: Proxy e)
-        f' <- tsTypeRep (Proxy :: Proxy f)
-        g' <- tsTypeRep (Proxy :: Proxy g)
-        h' <- tsTypeRep (Proxy :: Proxy h)
-        return $ TsTuple [a', b', c', d', e', f', g', h']
+    tsTypeRep _ = append (tsTypeRep (Proxy :: Proxy (a, b, c, d, e, f, g))) (tsTypeRep (Proxy :: Proxy h))
 
 instance (TsTypeable a, TsTypeable b, TsTypeable c, TsTypeable d, TsTypeable e, TsTypeable f, TsTypeable g, TsTypeable h, TsTypeable i) => TsTypeable (a, b, c, d, e, f, g, h, i) where
-    tsTypeRep _ = do
-        a' <- tsTypeRep (Proxy :: Proxy a)
-        b' <- tsTypeRep (Proxy :: Proxy b)
-        c' <- tsTypeRep (Proxy :: Proxy c)
-        d' <- tsTypeRep (Proxy :: Proxy d)
-        e' <- tsTypeRep (Proxy :: Proxy e)
-        f' <- tsTypeRep (Proxy :: Proxy f)
-        g' <- tsTypeRep (Proxy :: Proxy g)
-        h' <- tsTypeRep (Proxy :: Proxy h)
-        i' <- tsTypeRep (Proxy :: Proxy i)
-        return $ TsTuple [a', b', c', d', e', f', g', h', i']
+    tsTypeRep _ = append (tsTypeRep (Proxy :: Proxy (a, b, c, d, e, f, g, h))) (tsTypeRep (Proxy :: Proxy i))
 
 instance (TsTypeable a, TsTypeable b, TsTypeable c, TsTypeable d, TsTypeable e, TsTypeable f, TsTypeable g, TsTypeable h, TsTypeable i, TsTypeable j) => TsTypeable (a, b, c, d, e, f, g, h, i, j) where
-    tsTypeRep _ = do
-        a' <- tsTypeRep (Proxy :: Proxy a)
-        b' <- tsTypeRep (Proxy :: Proxy b)
-        c' <- tsTypeRep (Proxy :: Proxy c)
-        d' <- tsTypeRep (Proxy :: Proxy d)
-        e' <- tsTypeRep (Proxy :: Proxy e)
-        f' <- tsTypeRep (Proxy :: Proxy f)
-        g' <- tsTypeRep (Proxy :: Proxy g)
-        h' <- tsTypeRep (Proxy :: Proxy h)
-        i' <- tsTypeRep (Proxy :: Proxy i)
-        j' <- tsTypeRep (Proxy :: Proxy j)
-        return $ TsTuple [a', b', c', d', e', f', g', h', i', j']
+    tsTypeRep _ = append (tsTypeRep (Proxy :: Proxy (a, b, c, d, e, f, g, h, i))) (tsTypeRep (Proxy :: Proxy j))
 
 instance (TsTypeable a, TsTypeable b, TsTypeable c, TsTypeable d, TsTypeable e, TsTypeable f, TsTypeable g, TsTypeable h, TsTypeable i, TsTypeable j, TsTypeable k) => TsTypeable (a, b, c, d, e, f, g, h, i, j, k) where
-    tsTypeRep _ = do
-        a' <- tsTypeRep (Proxy :: Proxy a)
-        b' <- tsTypeRep (Proxy :: Proxy b)
-        c' <- tsTypeRep (Proxy :: Proxy c)
-        d' <- tsTypeRep (Proxy :: Proxy d)
-        e' <- tsTypeRep (Proxy :: Proxy e)
-        f' <- tsTypeRep (Proxy :: Proxy f)
-        g' <- tsTypeRep (Proxy :: Proxy g)
-        h' <- tsTypeRep (Proxy :: Proxy h)
-        i' <- tsTypeRep (Proxy :: Proxy i)
-        j' <- tsTypeRep (Proxy :: Proxy j)
-        k' <- tsTypeRep (Proxy :: Proxy k)
-        return $ TsTuple [a', b', c', d', e', f', g', h', i', j', k']
+    tsTypeRep _ = append (tsTypeRep (Proxy :: Proxy (a, b, c, d, e, f, g, h, i, j))) (tsTypeRep (Proxy :: Proxy k))
 
 instance (TsTypeable a, TsTypeable b, TsTypeable c, TsTypeable d, TsTypeable e, TsTypeable f, TsTypeable g, TsTypeable h, TsTypeable i, TsTypeable j, TsTypeable k, TsTypeable l) => TsTypeable (a, b, c, d, e, f, g, h, i, j, k, l) where
-    tsTypeRep _ = do
-        a' <- tsTypeRep (Proxy :: Proxy a)
-        b' <- tsTypeRep (Proxy :: Proxy b)
-        c' <- tsTypeRep (Proxy :: Proxy c)
-        d' <- tsTypeRep (Proxy :: Proxy d)
-        e' <- tsTypeRep (Proxy :: Proxy e)
-        f' <- tsTypeRep (Proxy :: Proxy f)
-        g' <- tsTypeRep (Proxy :: Proxy g)
-        h' <- tsTypeRep (Proxy :: Proxy h)
-        i' <- tsTypeRep (Proxy :: Proxy i)
-        j' <- tsTypeRep (Proxy :: Proxy j)
-        k' <- tsTypeRep (Proxy :: Proxy k)
-        l' <- tsTypeRep (Proxy :: Proxy l)
-        return $ TsTuple [a', b', c', d', e', f', g', h', i', j', k', l']
+    tsTypeRep _ = append (tsTypeRep (Proxy :: Proxy (a, b, c, d, e, f, g, h, i, j, k))) (tsTypeRep (Proxy :: Proxy l))
 
 instance (TsTypeable a, TsTypeable b, TsTypeable c, TsTypeable d, TsTypeable e, TsTypeable f, TsTypeable g, TsTypeable h, TsTypeable i, TsTypeable j, TsTypeable k, TsTypeable l, TsTypeable m) => TsTypeable (a, b, c, d, e, f, g, h, i, j, k, l, m) where
-    tsTypeRep _ = do
-        a' <- tsTypeRep (Proxy :: Proxy a)
-        b' <- tsTypeRep (Proxy :: Proxy b)
-        c' <- tsTypeRep (Proxy :: Proxy c)
-        d' <- tsTypeRep (Proxy :: Proxy d)
-        e' <- tsTypeRep (Proxy :: Proxy e)
-        f' <- tsTypeRep (Proxy :: Proxy f)
-        g' <- tsTypeRep (Proxy :: Proxy g)
-        h' <- tsTypeRep (Proxy :: Proxy h)
-        i' <- tsTypeRep (Proxy :: Proxy i)
-        j' <- tsTypeRep (Proxy :: Proxy j)
-        k' <- tsTypeRep (Proxy :: Proxy k)
-        l' <- tsTypeRep (Proxy :: Proxy l)
-        m' <- tsTypeRep (Proxy :: Proxy m)
-        return $ TsTuple [a', b', c', d', e', f', g', h', i', j', k', l', m']
+    tsTypeRep _ = append (tsTypeRep (Proxy :: Proxy (a, b, c, d, e, f, g, h, i, j, k, l))) (tsTypeRep (Proxy :: Proxy m))
 
 instance (TsTypeable a, TsTypeable b, TsTypeable c, TsTypeable d, TsTypeable e, TsTypeable f, TsTypeable g, TsTypeable h, TsTypeable i, TsTypeable j, TsTypeable k, TsTypeable l, TsTypeable m, TsTypeable n) => TsTypeable (a, b, c, d, e, f, g, h, i, j, k, l, m, n) where
-    tsTypeRep _ = do
-        a' <- tsTypeRep (Proxy :: Proxy a)
-        b' <- tsTypeRep (Proxy :: Proxy b)
-        c' <- tsTypeRep (Proxy :: Proxy c)
-        d' <- tsTypeRep (Proxy :: Proxy d)
-        e' <- tsTypeRep (Proxy :: Proxy e)
-        f' <- tsTypeRep (Proxy :: Proxy f)
-        g' <- tsTypeRep (Proxy :: Proxy g)
-        h' <- tsTypeRep (Proxy :: Proxy h)
-        i' <- tsTypeRep (Proxy :: Proxy i)
-        j' <- tsTypeRep (Proxy :: Proxy j)
-        k' <- tsTypeRep (Proxy :: Proxy k)
-        l' <- tsTypeRep (Proxy :: Proxy l)
-        m' <- tsTypeRep (Proxy :: Proxy m)
-        n' <- tsTypeRep (Proxy :: Proxy n)
-        return $ TsTuple [a', b', c', d', e', f', g', h', i', j', k', l', m', n']
+    tsTypeRep _ = append (tsTypeRep (Proxy :: Proxy (a, b, c, d, e, f, g, h, i, j, k, l, m))) (tsTypeRep (Proxy :: Proxy n))
 
 instance (TsTypeable a, TsTypeable b, TsTypeable c, TsTypeable d, TsTypeable e, TsTypeable f, TsTypeable g, TsTypeable h, TsTypeable i, TsTypeable j, TsTypeable k, TsTypeable l, TsTypeable m, TsTypeable n, TsTypeable o) => TsTypeable (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o) where
-    tsTypeRep _ = do
-        a' <- tsTypeRep (Proxy :: Proxy a)
-        b' <- tsTypeRep (Proxy :: Proxy b)
-        c' <- tsTypeRep (Proxy :: Proxy c)
-        d' <- tsTypeRep (Proxy :: Proxy d)
-        e' <- tsTypeRep (Proxy :: Proxy e)
-        f' <- tsTypeRep (Proxy :: Proxy f)
-        g' <- tsTypeRep (Proxy :: Proxy g)
-        h' <- tsTypeRep (Proxy :: Proxy h)
-        i' <- tsTypeRep (Proxy :: Proxy i)
-        j' <- tsTypeRep (Proxy :: Proxy j)
-        k' <- tsTypeRep (Proxy :: Proxy k)
-        l' <- tsTypeRep (Proxy :: Proxy l)
-        m' <- tsTypeRep (Proxy :: Proxy m)
-        n' <- tsTypeRep (Proxy :: Proxy n)
-        o' <- tsTypeRep (Proxy :: Proxy o)
-        return $ TsTuple [a', b', c', d', e', f', g', h', i', j', k', l', m', n', o']
+    tsTypeRep _ = append (tsTypeRep (Proxy :: Proxy (a, b, c, d, e, f, g, h, i, j, k, l, m, n))) (tsTypeRep (Proxy :: Proxy o))
 
 class TsTypeableKey a where
-    tsKeyTypeRep :: Proxy a -> TsContext TsType 
+    tsKeyTypeRep :: Proxy a -> TsType 
 
 instance TsTypeableKey Bool where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 instance TsTypeableKey Char where 
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 instance TsTypeableKey Double where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 instance TsTypeableKey Float where 
-    tsKeyTypeRep _ = return TsString 
+    tsKeyTypeRep _ = TsString 
 
 instance TsTypeableKey Int where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 instance TsTypeableKey Int8 where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 instance TsTypeableKey Int16 where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 instance TsTypeableKey Int32 where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 instance TsTypeableKey Int64 where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 instance TsTypeableKey Integer where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 instance TsTypeableKey Natural where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 instance TsTypeableKey Word where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 instance TsTypeableKey Word8 where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 instance TsTypeableKey Word16 where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 instance TsTypeableKey Word32 where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 instance TsTypeableKey Word64 where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 instance TsTypeableKey Text where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 instance TsTypeableKey LT.Text where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 instance TsTypeableKey Version where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 {-
 instance TsTypeableKey Scientific where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 -}
 
 instance TsTypeableKey ZonedTime where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 instance TsTypeableKey LocalTime where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 instance TsTypeableKey TimeOfDay where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 instance TsTypeableKey UTCTime where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 instance TsTypeableKey Day where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 
 {-
 instance TsTypeableKey UUID where
-    tsKeyTypeRep _ = return TsString
+    tsKeyTypeRep _ = TsString
 -}

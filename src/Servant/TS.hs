@@ -1,8 +1,6 @@
 module Servant.TS (
     tsForAPI,
     TsTypeable(..),
-    TsStrategy(..),
-    TsDerivingStrategy(..),
     TsContext (..),
     TsType(..),
     TsTypeF(..),
@@ -11,3 +9,4 @@ module Servant.TS (
 ) where
 
 import Servant.TS.Internal
+import Servant.TS.Core

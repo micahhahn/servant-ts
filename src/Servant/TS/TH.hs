@@ -13,10 +13,13 @@ import qualified Data.Text as Text
 import Language.Haskell.TH
 import Language.Haskell.TH.Datatype
 
-import Data.Map (Map)
-import qualified Data.Map as Map
+import Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as HashMap
+import Data.Map.Lazy (Map)
+import qualified Data.Map.Lazy as Map
 
-import Servant.TS.Internal (TsTypeable(..), TsType(..), TsContext(..))
+import Servant.TS.Core (TsType(..), TsContext(..))
+import Servant.TS.Internal (TsTypeable(..))
 
 deriveTsJSON :: Options -> Name -> Q [Dec]
 deriveTsJSON opts name = do
@@ -61,9 +64,9 @@ deriveTsTypeable opts name = do
               
               let binds = (\(t, n) -> bindS (varP n) [| tsTypeRep (Proxy :: Proxy $(return t)) |]) <$> (Map.assocs ts)
               let context = bindS wildP [| TsContext () (Map.singleton (typeRep (Proxy :: Proxy $(conT name))) $body) |]
-              let ref = [| return $ TsRef (typeRep (Proxy :: Proxy $(conT name))) $(return . ListE $ VarE . (ts Map.!) <$> generics) |]
+              let ref = [| TsNamedType (typeRep (Proxy :: Proxy $(conT name))) $(listE $ mkVarRef (Map.empty, Map.empty) <$> generics) $body |]
               let dos = doE (binds ++ [context, noBindS ref])
-              funD 'tsTypeRep [clause [wildP] (normalB dos) []]
+              funD 'tsTypeRep [clause [wildP] (normalB ref) []]
             
           mkTypeE :: (Map Type ExpQ, Map Type Name) -> ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
           mkTypeE m c = case constructorVariant c of
@@ -78,7 +81,7 @@ deriveTsTypeable opts name = do
           makeRecordE :: [Q Exp] -> Q Exp {- [Q (Text, TsContext TsType)] -> Q (TsContext TsType) -}
           makeRecordE ts = if (unwrapUnaryRecords opts) && length ts == 1
                            then [| snd $(head ts) |]
-                           else [| TsObject $(ListE <$> sequence ts) |]
+                           else [| TsObject $ HashMap.fromList $(ListE <$> sequence ts) |]
 
           isNullaryCons :: ConstructorInfo -> Bool
           isNullaryCons = (\x -> length x == 0) . constructorFields 
@@ -91,11 +94,11 @@ deriveTsTypeable opts name = do
                                in case sumEncoding opts of
                                       (TaggedObject tn cn) -> case constructorVariant c of
                                                                   NormalConstructor -> case constructorFields c of
-                                                                                      [] -> [| TsObject [($(mkTextE tn), $conE)] |]
-                                                                                      _ -> [| TsObject [($(mkTextE tn), $conE), ($(mkTextE cn), $(mkTypeE m c))] |]
+                                                                                      [] -> [| TsObject $ HashMap.singleton $(mkTextE tn) $conE |]
+                                                                                      _ -> [| TsObject $ HashMap.fromList [($(mkTextE tn), $conE), ($(mkTextE cn), $(mkTypeE m c))] |]
                                                                   RecordConstructor ns -> makeRecordE $ [| ($(mkTextE tn), TsStringLiteral $ $(mkConStringE $ constructorName c)) |] : (mkRecordFieldE m <$> zip ns (constructorFields c))
                                       UntaggedValue -> mkTypeE m c
-                                      ObjectWithSingleField -> [| TsObject [($(mkConStringE $ constructorName c), $(mkTypeE m c))] |]
+                                      ObjectWithSingleField -> [| TsObject $ HashMap.singleton $(mkConStringE $ constructorName c) $(mkTypeE m c) |]
                                       TwoElemArray -> [| TsTuple [$conE, $(mkTypeE m c)] |]
 
           mkRecordFieldE :: (Map Type ExpQ, Map Type Name) -> (Name, Type) -> Q Exp {- Q (Text, TsContext TsType) -}
@@ -105,9 +108,7 @@ deriveTsTypeable opts name = do
           mkNormalFieldE = mkVarRef
 
           mkVarRef :: (Map Type ExpQ, Map Type Name) -> Type -> Q Exp
-          mkVarRef (genericMap, subtypeMap) t = case Map.lookup t genericMap of
-                                                    Just t' -> t'
-                                                    Nothing -> return . VarE $ subtypeMap Map.! t
+          mkVarRef (genericMap, subtypeMap) t = [| tsTypeRep (Proxy :: Proxy $(return t)) |]
 
           mkFieldStringE :: Name -> Q Exp {- Q String -}
           mkFieldStringE n = mkTextE . (fieldLabelModifier opts) . nameBase $ n

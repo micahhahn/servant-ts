@@ -12,8 +12,8 @@ module Servant.TS.GenericTests (
 
 import Data.Aeson
 import Data.Aeson.TH
-import Data.Map (Map)
-import qualified Data.Map as Map
+import Data.Map.Lazy (Map)
+import qualified Data.Map.Lazy as Map
 import Data.Text (Text)
 import Data.Typeable
 import GHC.Generics
@@ -21,8 +21,12 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 import Servant.TS
+import Servant.TS.Core
 import Servant.TS.TH
 import Servant.TS.TestHelpers
+
+import Language.Haskell.TH
+import Language.Haskell.TH.Ppr
 
 data TFieldTest = CFieldTest1 { fFieldTest1A :: Int, fFieldTest1B :: Int }
                 | CFieldTest2 { fFieldTest2A :: Bool, fFIeldTest2B :: Text }
@@ -84,6 +88,16 @@ data TPolyTest a = CPolyTest a Int
                  deriving (Show, Typeable)
 deriveTsJSON defaultOptions ''TPolyTest
 
+data TPolyTest2 a b = CPolyTest2 a b
+                    deriving (Show, Typeable)
+deriveTsJSON defaultOptions ''TPolyTest2
+
+data TRecursiveTest a = CRecursiveBase
+                      | CRecursiveRecurse a (TRecursiveTest a)
+                      deriving (Show, Typeable)
+deriveTsJSON defaultOptions ''TRecursiveTest
+
+
 genericTests :: TestTree
 genericTests = testGroup "Aeson <-> TS generic deriving isomorphic"
     [ makeTest (CFieldLabelModifier 1)
@@ -121,4 +135,6 @@ genericTests = testGroup "Aeson <-> TS generic deriving isomorphic"
 
     , makeTest (CPolyTest (1 :: Int) 7)
     , makeTest (CPolyTest ("a" :: Text) 7)
+
+    , makeTest (CPolyTest2 (1 :: Int) ("a" :: Text))
     ]
