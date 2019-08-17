@@ -29,9 +29,10 @@ deriveTsJSON opts name = do
 
 deriveTsTypeable :: Options -> Name -> Q [Dec]
 deriveTsTypeable opts name = do
-    DatatypeInfo { datatypeVars = vars
+    DatatypeInfo { datatypeVars = kindedVars
                  , datatypeCons = cons } <- reifyDatatype name
     stvs <- isExtEnabled ScopedTypeVariables
+    let vars = [v | (KindedTV _ v) <- kindedVars ]
     _ <- if not stvs && length vars > 0 
          then fail $ "You must have the ScopedTypeVariables language extension enabled to derive TsTypeable for polymorphic type " ++ (nameBase name) ++ "." 
          else return ()
