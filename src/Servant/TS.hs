@@ -3,7 +3,9 @@ module Servant.TS (
     TsTypeable(..),
     TsContext (..),
     TsType(..),
-    TsTypeF(..),
+    TsType'(..),
+    TsType'F(..),
+    TsTypeDefF(..),
     TsGenOptions(..),
     defaultTsGenOptions
 ) where

@@ -29,7 +29,7 @@ import Servant.TS
 reduceGenerics :: [TsType] -> TsType -> TsType
 reduceGenerics ts t = cata f t
 
-    where f :: TsTypeF TsType -> TsType
+    where f :: TsType'F TsTypeDefF TsType -> TsType
           f (TsGenericArgF i) = ts !! i 
           f x = embed x
 
@@ -38,7 +38,7 @@ type Context = ([Value -> Maybe (TsType, Value)], Value) -> Maybe (TsType, Value
 tsTypecheck :: TsType -> Value -> Maybe (TsType, Value)
 tsTypecheck t v = para f t $ ([], v)
 
-    where f :: TsTypeF (TsType, Context) -> Context
+    where f :: TsType'F TsTypeDefF (TsType, Context) -> Context
           f TsNullF (_, Null) = Nothing
           f TsBooleanF (_, (Bool _)) = Nothing
           f TsNumberF (_, (Number _)) = Nothing
@@ -55,7 +55,7 @@ tsTypecheck t v = para f t $ ([], v)
           f t@(TsTupleF ts) (gs, v@(Array vs)) = if length ts == length vs
                                                  then firstError $ (\((_, f), v) -> f (gs, v)) <$> zip ts (Vector.toList vs)
                                                  else mkError t v
-          f (TsNamedTypeF tr ts (_, f)) (gs, v) = f $ ((\(_, f') -> (\v -> f' (gs, v))) <$> ts, v)
+          f (TsNamedTypeF (TsTypeDefF tr ts (_, f))) (gs, v) = f $ ((\(_, f') -> (\v -> f' (gs, v))) <$> ts, v)
           f t@(TsGenericArgF i) (gs, v) = if i < length gs
                                           then (gs !! i) v
                                           else mkError t v
@@ -64,7 +64,7 @@ tsTypecheck t v = para f t $ ([], v)
           firstError :: [Maybe a] -> Maybe a
           firstError = find (const True) . mapMaybe id
 
-          mkError :: TsTypeF (TsType, Context) -> Value -> Maybe (TsType, Value)
+          mkError :: TsType'F TsTypeDefF (TsType, Context) -> Value -> Maybe (TsType, Value)
           mkError tF v' = Just (embed . fmap fst $ tF, v')
 
 makeTest :: forall a. (ToJSON a, Show a, Typeable a, TsTypeable a) => a -> TestTree

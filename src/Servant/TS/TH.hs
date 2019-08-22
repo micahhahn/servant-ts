@@ -18,7 +18,7 @@ import qualified Data.HashMap.Strict as HashMap
 import Data.Map.Lazy (Map)
 import qualified Data.Map.Lazy as Map
 
-import Servant.TS.Core (TsType(..), TsContext(..))
+import Servant.TS.Core (TsType'(..), TsTypeDef(..), TsType(..), TsContext(..))
 import Servant.TS.Internal (TsTypeable(..))
 
 deriveTsJSON :: Options -> Name -> Q [Dec]
@@ -29,10 +29,9 @@ deriveTsJSON opts name = do
 
 deriveTsTypeable :: Options -> Name -> Q [Dec]
 deriveTsTypeable opts name = do
-    DatatypeInfo { datatypeVars = kindedVars
+    DatatypeInfo { datatypeInstTypes = vars
                  , datatypeCons = cons } <- reifyDatatype name
     stvs <- isExtEnabled ScopedTypeVariables
-    let vars = [v | (KindedTV _ v) <- kindedVars ]
     _ <- if not stvs && length vars > 0 
          then fail $ "You must have the ScopedTypeVariables language extension enabled to derive TsTypeable for polymorphic type " ++ (nameBase name) ++ "." 
          else return ()
@@ -65,7 +64,7 @@ deriveTsTypeable opts name = do
               
               let binds = (\(t, n) -> bindS (varP n) [| tsTypeRep (Proxy :: Proxy $(return t)) |]) <$> (Map.assocs ts)
               let context = bindS wildP [| TsContext () (Map.singleton (typeRep (Proxy :: Proxy $(conT name))) $body) |]
-              let ref = [| TsNamedType (typeRep (Proxy :: Proxy $(conT name))) $(listE $ mkVarRef (Map.empty, Map.empty) <$> generics) $body |]
+              let ref = [| TsNamedType (TsTypeDef (typeRep (Proxy :: Proxy $(conT name))) $(listE $ mkVarRef (Map.empty, Map.empty) <$> generics) $body) |]
               let dos = doE (binds ++ [context, noBindS ref])
               funD 'tsTypeRep [clause [wildP] (normalB ref) []]
             
