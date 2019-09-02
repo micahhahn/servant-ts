@@ -9,6 +9,7 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -104,14 +105,13 @@ tsForAPI api opts = writeEndpoints opts $ listFromAPI (Proxy :: Proxy TypeScript
    we can effectively ignore phantom types and higher kinded types alike.
 -}
 
-tsUnqualifiedCustomTypeName :: TypeRep -> Text
-tsUnqualifiedCustomTypeName t = let tn = sanitizeTSName . Text.pack . tyConName . typeRepTyCon $ t
-                                 in Text.intercalate "_" (tn : (tsUnqualifiedCustomTypeName <$> typeRepArgs t))
+tsUnqualifiedCustomTypeName :: TsTypeName -> Text
+tsUnqualifiedCustomTypeName (TsTypeName n ns) = Text.intercalate "_" (sanitizeTSName (_name n) : (tsUnqualifiedCustomTypeName <$> ns)) 
 
-tsCustomTypeName :: TypeRep -> Text
-tsCustomTypeName t = let tn = sanitizeTSName . Text.pack . tyConName . typeRepTyCon $ t
-                         mn = sanitizeTSName . Text.pack . tyConModule . typeRepTyCon $ t
-                      in Text.intercalate "_" ((mn <> "." <> tn) : (tsUnqualifiedCustomTypeName <$> typeRepArgs t))
+tsCustomTypeName :: TsTypeName -> Text
+tsCustomTypeName (TsTypeName n ns) = let tn = sanitizeTSName . _name $ n
+                                         mn = sanitizeTSName . _module $ n
+                                      in Text.intercalate "_" ((mn <> "." <> tn) : (tsUnqualifiedCustomTypeName <$> ns))
 
 tsTypeName :: TsRefType -> Text 
 tsTypeName TsVoid = "void"
@@ -197,7 +197,15 @@ writeEndpoint opts t = do
           quote :: Text -> Text
           quote s = makeQuote opts <> s <> makeQuote opts
 
-writeCustomType :: TsGenOptions -> (TypeRep, TsRefType) -> Text
+mkTsTypeName :: forall a p. (Typeable a) => p a -> TsTypeName
+mkTsTypeName p = fromRep $ typeRep p
+    where fromRep :: TypeRep -> TsTypeName
+          fromRep t = let (con, args) = splitTyConApp t
+                          mk f = Text.pack . f $ con
+                          cons =  ConName (mk tyConPackage) (mk tyConModule) (mk tyConName)
+                       in TsTypeName cons (fromRep <$> args)
+
+writeCustomType :: TsGenOptions -> (TsTypeName, TsRefType) -> Text
 writeCustomType opts (tr, t) = let prefix = "export type " <> typeName
                                 in i' <> prefix <> " = " <> writeCustomTypeDef (Text.length prefix) t <> "\n"
     where i' = makeIndent opts
@@ -213,9 +221,6 @@ writeCustomType opts (tr, t) = let prefix = "export type " <> typeName
 
           writeCustomTypeDef _ t = tsTypeName t
 
-          makeQualifiedType :: Text -> TypeRep -> Text
-          makeQualifiedType n ts = Text.intercalate "_" (n : (tsUnqualifiedCustomTypeName <$> typeRepArgs ts))
-
           writeTypeGuard :: (Text, TsRefType) -> Text
           writeTypeGuard (n, TsObject ts) = let tr = writeCustomTypeDef 0 (TsObject ts)
                                              in i' <> "export function is" <> n <> "($u: " <> typeName <> "): $u is " <> tr <> "\n" <>
@@ -224,8 +229,8 @@ writeCustomType opts (tr, t) = let prefix = "export type " <> typeName
                                                 i' <> i' <> "return " <> Text.intercalate " && " (("$t." <> ) . (<> " !== undefined") <$> HashMap.keys ts) <> ";\n" <>
                                                 i' <> "}"
 
-writeCustomTypes :: TsGenOptions -> Map TypeRep TsRefType -> Text
-writeCustomTypes opts m = let as = (\t -> (Text.pack . tyConModule . typeRepTyCon . fst $ t, t)) <$> Map.assocs m
+writeCustomTypes :: TsGenOptions -> Map TsTypeName TsRefType -> Text
+writeCustomTypes opts m = let as = (\t -> (_module . (\(TsTypeName c _) -> c) . fst $ t, t)) <$> Map.assocs m
                               gs = groupBy (\l r -> fst l == fst r) . sortBy (\l r -> fst l `compare` fst r) $ as
                               gs' = (\g -> (fst . head $ g, snd <$> g)) <$> gs
                               t = (\g -> "export namespace " <> fst g <> "\n" <>
@@ -447,9 +452,11 @@ instance TsTypeable Version where
 instance (TsTypeable a) => TsTypeable (Maybe a) where
     tsTypeRep _ = TsNullable (tsTypeRep (Proxy :: Proxy a))
 
-instance (Typeable a, TsTypeable a, Typeable b, TsTypeable b) => TsTypeable (Either a b) where
-    tsTypeRep _ = let t = TsUnion [TsObject $ HashMap.fromList [("Left", TsGenericArg 0)], TsObject $ HashMap.fromList [("Right", TsGenericArg 1)]]
-                   in TsNamedType $ TsTypeDef (typeRep (Proxy :: Proxy Either)) [tsTypeRep (Proxy :: Proxy a), tsTypeRep (Proxy :: Proxy b)] t
+instance (TsTypeable a, TsTypeable b) => TsTypeable (Either a b) where
+    tsTypeRep _ = let t = TsUnion [TsObject $ HashMap.fromList [("Left", TsGenericArg 0)], 
+                                   TsObject $ HashMap.fromList [("Right", TsGenericArg 1)]]
+                      tn = mkTsTypeName (Proxy :: Proxy Either)
+                   in TsNamedType $ TsTypeDef tn [tsTypeRep (Proxy :: Proxy a), tsTypeRep (Proxy :: Proxy b)] t
 
 instance (TsTypeable a) => TsTypeable [a] where
     tsTypeRep _ = TsArray (tsTypeRep (Proxy :: Proxy a))
@@ -500,7 +507,8 @@ instance (TsTypeable v) => TsTypeable (IntMap v) where
 
 instance (TsTypeable a, Typeable a) => TsTypeable (Tree a) where
     tsTypeRep _ = let t = TsTuple [TsGenericArg 0, TsArray (tsTypeRep (Proxy :: Proxy (Tree a)))]
-                   in TsNamedType $ TsTypeDef (typeRep (Proxy :: Proxy Tree)) [tsTypeRep (Proxy :: Proxy a)] t
+                      tn = mkTsTypeName (Proxy :: Proxy Tree)
+                   in TsNamedType $ TsTypeDef tn [tsTypeRep (Proxy :: Proxy a)] t
 
 instance (TsTypeableKey k, TsTypeable v) => TsTypeable (Map.Map k v) where
     tsTypeRep _ = makeMap (Proxy :: Proxy k) (Proxy :: Proxy v)

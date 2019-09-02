@@ -2,16 +2,15 @@
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-
-{-# LANGUAGE FlexibleContexts #-}
 
 module Servant.TS.Core (
     TsType'(..),
+    ConName(..),
+    TsTypeName(..),
     TsType,
     TsRefType,
     TsType'F(..),
@@ -31,19 +30,34 @@ import qualified Data.Map.Lazy as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
+import qualified Data.Text as Text
 import Data.Typeable
 
+-- | Avoid requiring Typeable
+data ConName = ConName
+    { _package :: !Text
+    , _module :: !Text
+    , _name :: !Text
+    } deriving (Show, Eq, Ord)
+
+-- | Contains enough information to uniquely identify a top level typescript definition.
+-- | Note that not all type arguments need be named, only those of kind (k -> *). We represent these
+-- | in TypeScript as separate named types
+data TsTypeName = TsTypeName ConName [TsTypeName]
+    deriving (Show, Eq, Ord)
+
 {- A (potentially infinite) recursive definition  -}
-data TsTypeDef = TsTypeDef TypeRep [TsType] TsType
+data TsTypeDef = TsTypeDef TsTypeName [TsType] TsType
     deriving (Show, Eq)
 
-data TsTypeDefF r = TsTypeDefF TypeRep [r] r
+data TsTypeDefF r = TsTypeDefF TsTypeName [r] r
     deriving (Functor, Foldable, Traversable)
 
 {- A weak reference to a TsType held in the containing context -}
-data TsTypeRef = TsTypeRef TypeRep [TsRefType]
+data TsTypeRef = TsTypeRef TsTypeName [TsRefType]
     deriving (Show, Eq)
 
+-- | The core type.  a is always either TsTypeDef or TsTypeRef
 data TsType' a = TsVoid
                | TsNever
                | TsNull
@@ -123,7 +137,7 @@ instance Corecursive TsType where
     embed (TsNamedTypeF (TsTypeDefF r ts t)) = TsNamedType (TsTypeDef r ts t)
     embed (TsGenericArgF a) = TsGenericArg a
  
-data TsContext a = TsContext a (Map TypeRep TsRefType)
+data TsContext a = TsContext a (Map TsTypeName TsRefType)
     deriving (Show, Functor)
 
 instance Applicative TsContext where
@@ -178,7 +192,7 @@ instance Monad TsContext where
 {- Take a potentially infinitely recursive TsType and abstract out the common TsNamedTypes -}
 flatten :: TsType -> TsContext TsRefType
 flatten t = cata f t $ Set.empty
-    where f :: TsType'F TsTypeDefF (Set TypeRep -> TsContext TsRefType) -> (Set TypeRep -> TsContext TsRefType)
+    where f :: TsType'F TsTypeDefF (Set TsTypeName -> TsContext TsRefType) -> (Set TsTypeName -> TsContext TsRefType)
           f (TsNamedTypeF (TsTypeDefF tr ts t)) s = if Set.member tr s
                                                     then TsNamedType <$> TsTypeRef tr <$> sequence (ts <*> return s)
                                                     else do 

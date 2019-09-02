@@ -5,6 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Servant.TS.GenericTests (
     genericTests
@@ -97,6 +98,17 @@ data TRecursiveTest a = CRecursiveBase
                       deriving (Show, Typeable)
 deriveTsJSON defaultOptions ''TRecursiveTest
 
+data THoleTest a = THoleTest
+                 deriving (Show, Typeable)
+
+deriveTsTypeable defaultOptions ''THoleTest
+                             
+data THKTTest a = HKTTestA (a Int)
+                | HKTTestB (Maybe (a Text))
+                | HKTTestC (THoleTest (a Int))
+    deriving (Typeable)
+    
+deriveTsTypeable defaultOptions ''THKTTest
 
 genericTests :: TestTree
 genericTests = testGroup "Aeson <-> TS generic deriving isomorphic"
