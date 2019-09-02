@@ -15,6 +15,7 @@ module Servant.TS.TH (
     deriveTsTypeable
 ) where
 
+import Control.Monad (when)
 import Data.Aeson.TH (Options(..), SumEncoding(..), deriveJSON)
 import qualified Data.List as List
 import Data.Proxy
@@ -124,14 +125,10 @@ deriveTsTypeable opts name = do
     let otherArgs = [ v | (SigT v _) <- snd p ]
 
     stvs <- isExtEnabled ScopedTypeVariables
-    _ <- if not stvs && length vars > 0 
-         then fail $ "You must have the " ++ show ScopedTypeVariables ++ " language extension enabled to derive TsTypeable for polymorphic type " ++ (nameBase name) ++ "." 
-         else return ()
+    when (not stvs && not (null vars)) (fail $ "You must have the " ++ show ScopedTypeVariables ++ " language extension enabled to derive TsTypeable for polymorphic type " ++ nameBase name ++ ".")
 
     ui <- isExtEnabled UndecidableInstances
-    _ <- if not ui && length otherArgs > 0
-         then fail $ "You must have the " ++ show UndecidableInstances ++ " language extension enabled to derive TsTypable for types with higher kinded type arguments"
-         else return ()
+    when (not ui && not (null otherArgs)) (fail $ "You must have the " ++ show UndecidableInstances ++ " language extension enabled to derive TsTypeable for types with arguments of kind (k -> *)")
     
     {- We need to put TsTypeable constraints on any polymorphic types or applications of higher kinded polymorphics, as well as all polymorphic types -}
     let constraints = Set.fromList $ mkConstraints (Set.fromList otherArgs) cons ++ [t | (SigT t StarT) <- vars]
