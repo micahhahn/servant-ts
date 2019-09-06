@@ -11,7 +11,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -53,7 +53,8 @@ import qualified Data.Text as Text
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Lazy as LT
 import Data.Time
-import Data.Tree
+import Data.Tree (Tree)
+import qualified Data.Tree as Tree
 import Data.Typeable
 import Data.UUID (UUID)
 import qualified Data.Vector as V
@@ -75,8 +76,8 @@ import Servant.TS.Core
 -- Dummy type to parameterize instances
 data TypeScript
 
-instance (TsTypeable a) => HasForeignType TypeScript (TsContext TsType) a where
-    typeFor _ _ p = undefined {- (tsTypeRep p) -}
+instance (TsTypeable a) => HasForeignType TypeScript TsType a where
+    typeFor _ _ p = (tsTypeRep p)
 
 data TsGenQuotes = TsSingleQuotes
                  | TsDoubleQuotes
@@ -94,8 +95,16 @@ data TsGenOptions = TsGenOptions
 defaultTsGenOptions :: TsGenOptions
 defaultTsGenOptions = TsGenOptions TsSingleQuotes (TsIndentSpaces 4)
 
-tsForAPI :: (HasForeign TypeScript (TsContext TsRefType) api, GenerateList (TsContext TsRefType) (Foreign (TsContext TsRefType) api)) => Proxy api -> TsGenOptions -> Text
-tsForAPI api opts = writeEndpoints opts $ listFromAPI (Proxy :: Proxy TypeScript) (Proxy :: Proxy (TsContext TsRefType)) api
+tsForAPI :: (HasForeign TypeScript TsType api, GenerateList TsType (Foreign TsType api)) => Proxy api -> TsGenOptions -> Text
+tsForAPI api opts = writeEndpoints opts $ listFromAPI (Proxy :: Proxy TypeScript) (Proxy :: Proxy TsType) api
+
+deriving instance Functor Req
+deriving instance Functor Url
+deriving instance Functor Segment
+deriving instance Functor SegmentType
+deriving instance Functor Arg
+deriving instance Functor QueryArg
+deriving instance Functor HeaderArg
 
 {- Using 'data' in jquery options potentially incorrect? -}
 
@@ -133,7 +142,7 @@ makeQuote opts = case _quotes opts of
 makeIndent :: TsGenOptions -> Text
 makeIndent opts = case _indent opts of
                       TsIndentTab -> "\t"
-                      TsIndentSpaces n -> Text.pack . concat . take n . repeat $ " "
+                      TsIndentSpaces n -> Text.pack . concat . replicate n $ " "
 
 writeEndpoint :: TsGenOptions -> Req (TsContext TsRefType) -> TsContext Text
 writeEndpoint opts t = do
@@ -239,8 +248,8 @@ writeCustomTypes opts m = let as = (\t -> (_module . (\(TsTypeName c _) -> c) . 
                                          "}") <$> gs' 
                            in Text.intercalate "\n\n" t
 
-writeEndpoints :: TsGenOptions -> [Req (TsContext TsRefType)] -> Text 
-writeEndpoints opts ts = let (TsContext ts' m) = sequence (writeEndpoint opts <$> ts)
+writeEndpoints :: TsGenOptions -> [Req TsType] -> Text 
+writeEndpoints opts ts = let (TsContext ts' m) = sequence (writeEndpoint opts <$> ((fmap flatten) <$> ts))
                          in "import * as $ from 'jquery';\n\n" <> 
                             writeCustomTypes opts m <> "\n\n" <>
                             Text.intercalate "\n\n" ts' <> "\n"

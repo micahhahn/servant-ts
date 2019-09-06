@@ -1,14 +1,9 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections #-}
-
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveTraversable #-}
-
-{- Temporary -}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Servant.TS.TH (
     deriveTsJSON,
@@ -83,6 +78,12 @@ instance Lift Text where
 instance Lift ConName where
     lift (ConName p m n) = [| ConName $(lift p) $(lift m) $(lift n) |]
 
+mkTextE :: String -> Q Exp {- Q Text -}
+mkTextE s = do
+    os <- isExtEnabled OverloadedStrings
+    if os then return . LitE . StringL $ s
+            else [| Text.pack $(return . LitE . StringL $ s) |]
+
 mkConName :: Name -> Q ConName
 mkConName n = do
     loc <- location
@@ -104,21 +105,12 @@ mkTopLevelTsTypeName n ts = do
     as <- sequence $ (\v -> [| mkTsTypeName (Proxy :: Proxy $(return v)) |]) <$> ts
     [| TsTypeName $(lift con) $(return $ ListE as) |]
 
-mkTextE :: String -> Q Exp {- Q Text -}
-mkTextE s = do
-    os <- isExtEnabled OverloadedStrings
-    if os then return . LitE . StringL $ s
-            else [| Text.pack $(return . LitE . StringL $ s) |]
-
 deriveTsTypeable :: Options -> Name -> Q [Dec]
 deriveTsTypeable opts name = do
     DatatypeInfo { datatypeInstTypes = vars
                  , datatypeVars = dVars
                  , datatypeCons = cons } <- reifyDatatype name
     
-    c <- mkConName name
-    -- q <- mkTsTypeName name vars 
-
     -- starArgs can be represented as generics in TypeScript
     let p = List.partition isStarT vars
     let starArgs = [ v | (SigT v _) <- fst p ]
