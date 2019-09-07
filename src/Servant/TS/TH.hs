@@ -108,7 +108,6 @@ mkTopLevelTsTypeName n ts = do
 deriveTsTypeable :: Options -> Name -> Q [Dec]
 deriveTsTypeable opts name = do
     DatatypeInfo { datatypeInstTypes = vars
-                 , datatypeVars = dVars
                  , datatypeCons = cons } <- reifyDatatype name
     
     -- starArgs can be represented as generics in TypeScript
@@ -145,23 +144,19 @@ deriveTsTypeable opts name = do
           mkTsTypeRep vars otherArgs cons = do
               let generics = [t | (SigT t StarT) <- vars] {- We can only represent fully saturated polymorphic type arguments in TypeScript -}
               let genericArgs = Map.fromList $ (\x -> (snd x, [| TsGenericArg $(return . LitE . IntegerL . fst $ x) |])) <$> zip [0..] ((\(SigT v _) -> v) <$> vars) 
-              ts <- collectSubtypes genericArgs cons
               let body = [| $(if tagSingleConstructors opts || length cons > 1
-                              then let mk = if allNullaryToStringTag opts && all isNullaryCons cons then mkNullaryStringConsE else mkTaggedTypeE (genericArgs, ts)
+                              then let mk = if allNullaryToStringTag opts && all isNullaryCons cons then mkNullaryStringConsE else mkTaggedTypeE
                                     in [| TsUnion $(ListE <$> sequence (mk <$> cons)) |]
-                              else mkTypeE (genericArgs, ts) (head cons))
+                              else mkTypeE (head cons))
                           |]
               
-              let binds = (\(t, n) -> bindS (varP n) [| tsTypeRep (Proxy :: Proxy $(return t)) |]) <$> (Map.assocs ts)
-              let context = bindS wildP [| TsContext () (Map.singleton $(mkTopLevelTsTypeName name otherArgs) $body) |]
-              let ref = [| TsNamedType (TsTypeDef $(mkTopLevelTsTypeName name otherArgs) $(listE $ mkVarRef (Map.empty, Map.empty) <$> generics) $body) |]
-              let dos = doE (binds ++ [context, noBindS ref])
+              let ref = [| TsNamedType (TsTypeDef $(mkTopLevelTsTypeName name otherArgs) $(listE $ mkVarRef <$> generics) $body) |]
               funD 'tsTypeRep [clause [wildP] (normalB ref) []]
             
-          mkTypeE :: (Map Type ExpQ, Map Type Name) -> ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
-          mkTypeE m c = case constructorVariant c of
-                            NormalConstructor -> makeTupleE (mkNormalFieldE m <$> constructorFields c)
-                            RecordConstructor ns -> makeRecordE (mkRecordFieldE m <$> zip ns (constructorFields c))
+          mkTypeE :: ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
+          mkTypeE c = case constructorVariant c of
+                          NormalConstructor -> makeTupleE (mkNormalFieldE <$> constructorFields c)
+                          RecordConstructor ns -> makeRecordE (mkRecordFieldE <$> zip ns (constructorFields c))
 
           makeTupleE :: [Q Exp] -> Q Exp {- [Q TsContext TsType] -> Q (TsContext TsType) -}
           makeTupleE ts = case ts of
@@ -179,29 +174,29 @@ deriveTsTypeable opts name = do
           mkNullaryStringConsE :: ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
           mkNullaryStringConsE c = [| TsStringLiteral $(mkConStringE . constructorName $ c) |]
 
-          mkTaggedTypeE :: (Map Type ExpQ, Map Type Name) -> ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
-          mkTaggedTypeE m c = let conE = [| TsStringLiteral $(mkConStringE $ constructorName c) |]
-                               in case sumEncoding opts of
-                                      (TaggedObject tn cn) -> case constructorVariant c of
-                                                                  NormalConstructor -> case constructorFields c of
-                                                                                      [] -> [| TsObject $ HashMap.singleton $(mkTextE tn) $conE |]
-                                                                                      _ -> [| TsObject $ HashMap.fromList [($(mkTextE tn), $conE), ($(mkTextE cn), $(mkTypeE m c))] |]
-                                                                  RecordConstructor ns -> makeRecordE $ [| ($(mkTextE tn), TsStringLiteral $ $(mkConStringE $ constructorName c)) |] : (mkRecordFieldE m <$> zip ns (constructorFields c))
-                                      UntaggedValue -> mkTypeE m c
-                                      ObjectWithSingleField -> [| TsObject $ HashMap.singleton $(mkConStringE $ constructorName c) $(mkTypeE m c) |]
-                                      TwoElemArray -> [| TsTuple [$conE, $(mkTypeE m c)] |]
+          mkTaggedTypeE :: ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
+          mkTaggedTypeE c = let conE = [| TsStringLiteral $(mkConStringE $ constructorName c) |]
+                             in case sumEncoding opts of
+                                    (TaggedObject tn cn) -> case constructorVariant c of
+                                                                NormalConstructor -> case constructorFields c of
+                                                                                    [] -> [| TsObject $ HashMap.singleton $(mkTextE tn) $conE |]
+                                                                                    _ -> [| TsObject $ HashMap.fromList [($(mkTextE tn), $conE), ($(mkTextE cn), $(mkTypeE c))] |]
+                                                                RecordConstructor ns -> makeRecordE $ [| ($(mkTextE tn), TsStringLiteral $ $(mkConStringE $ constructorName c)) |] : (mkRecordFieldE <$> zip ns (constructorFields c))
+                                    UntaggedValue -> mkTypeE c
+                                    ObjectWithSingleField -> [| TsObject $ HashMap.singleton $(mkConStringE $ constructorName c) $(mkTypeE c) |]
+                                    TwoElemArray -> [| TsTuple [$conE, $(mkTypeE c)] |]
 
-          mkRecordFieldE :: (Map Type ExpQ, Map Type Name) -> (Name, Type) -> Q Exp {- Q (Text, TsContext TsType) -}
-          mkRecordFieldE ms (n, t) = [| ($(mkFieldStringE n), $(mkVarRef ms t)) |]
+          mkRecordFieldE :: (Name, Type) -> Q Exp {- Q (Text, TsContext TsType) -}
+          mkRecordFieldE (n, t) = [| ($(mkFieldStringE n), $(mkVarRef t)) |]
 
-          mkNormalFieldE :: (Map Type ExpQ, Map Type Name) -> Type -> Q Exp {- Q (TsContext TsType) -}
+          mkNormalFieldE :: Type -> Q Exp {- Q (TsContext TsType) -}
           mkNormalFieldE = mkVarRef
 
-          mkVarRef :: (Map Type ExpQ, Map Type Name) -> Type -> Q Exp
-          mkVarRef (genericMap, subtypeMap) t = [| tsTypeRep (Proxy :: Proxy $(return t)) |]
+          mkVarRef :: Type -> Q Exp
+          mkVarRef t = [| tsTypeRep (Proxy :: Proxy $(return t)) |]
 
           mkFieldStringE :: Name -> Q Exp {- Q String -}
-          mkFieldStringE n = mkTextE . (fieldLabelModifier opts) . nameBase $ n
+          mkFieldStringE = mkTextE . (fieldLabelModifier opts) . nameBase
         
           mkConStringE :: Name -> Q Exp {- Q String -}
-          mkConStringE n = mkTextE . (constructorTagModifier opts) . nameBase $ n
+          mkConStringE = mkTextE . (constructorTagModifier opts) . nameBase
