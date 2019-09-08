@@ -28,7 +28,7 @@ import qualified Data.Map.Lazy as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 
-import Servant.TS.Core (TsType'(..), TsTypeDef(..), TsType(..), TsContext(..), ConName(..), TsTypeName(..))
+import Servant.TS.Core
 import Servant.TS.Internal (TsTypeable(..), mkTsTypeName)
 
 import Data.Functor.Foldable
@@ -150,7 +150,7 @@ deriveTsTypeable opts name = do
                               else mkTypeE (head cons))
                           |]
               
-              let ref = [| TsNamedType (TsTypeDef $(mkTopLevelTsTypeName name otherArgs) $(listE $ mkVarRef <$> generics) $body) |]
+              let ref = [| TsNamedType $(mkTopLevelTsTypeName name otherArgs) $(listE $ mkVarRef Map.empty <$> starArgs) (TsDef $body) |]
               funD 'tsTypeRep [clause [wildP] (normalB ref) []]
             
           mkTypeE :: ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
@@ -176,10 +176,10 @@ deriveTsTypeable opts name = do
 
           mkTaggedTypeE :: ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
           mkTaggedTypeE c = let conE = [| TsStringLiteral $(mkConStringE $ constructorName c) |]
-                             in case sumEncoding opts of
-                                    (TaggedObject tn cn) -> case constructorVariant c of
-                                                                NormalConstructor -> case constructorFields c of
-                                                                                    [] -> [| TsObject $ HashMap.singleton $(mkTextE tn) $conE |]
+                               in case sumEncoding opts of
+                                      (TaggedObject tn cn) -> case constructorVariant c of
+                                                                  NormalConstructor -> case constructorFields c of
+                                                                                      [] -> [| TsObject $ HashMap.singleton $(mkTextE tn) $conE |]
                                                                                     _ -> [| TsObject $ HashMap.fromList [($(mkTextE tn), $conE), ($(mkTextE cn), $(mkTypeE c))] |]
                                                                 RecordConstructor ns -> makeRecordE $ [| ($(mkTextE tn), TsStringLiteral $ $(mkConStringE $ constructorName c)) |] : (mkRecordFieldE <$> zip ns (constructorFields c))
                                     UntaggedValue -> mkTypeE c

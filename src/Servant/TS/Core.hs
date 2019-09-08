@@ -7,19 +7,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module Servant.TS.Core (
-    TsType'(..),
-    ConName(..),
-    TsTypeName(..),
-    TsType,
-    TsRefType,
-    TsType'F(..),
-    TsTypeDef(..),
-    TsTypeDefF(..),
-    TsTypeRef(..),
-    TsContext(..),
-    flatten
-) where
+module Servant.TS.Core where
 
 import Data.Functor.Foldable
 import Data.Functor.Foldable.TH
@@ -31,7 +19,6 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Typeable
 
 -- | Avoid requiring Typeable
 data ConName = ConName
@@ -46,62 +33,57 @@ data ConName = ConName
 data TsTypeName = TsTypeName ConName [TsTypeName]
     deriving (Show, Eq, Ord)
 
-{- A (potentially infinite) recursive definition  -}
-data TsTypeDef = TsTypeDef TsTypeName [TsType] TsType
+newtype TsDef = TsDef { unTsDef :: TsType }
     deriving (Show, Eq)
 
-data TsTypeDefF r = TsTypeDefF TsTypeName [r] r
+newtype TsDefF r = TsDefF { unTsDefF :: r }
     deriving (Functor, Foldable, Traversable)
 
-{- A weak reference to a TsType held in the containing context -}
-data TsTypeRef = TsTypeRef TsTypeName [TsRefType]
-    deriving (Show, Eq)
-
 -- | The core type.  a is always either TsTypeDef or TsTypeRef
-data TsType' a = TsVoid
-               | TsNever
-               | TsNull
-               | TsBoolean
-               | TsNumber
-               | TsString
-               | TsStringLiteral Text
-               | TsUnion [TsType' a]
-               | TsMap (TsType' a)
-               | TsNullable (TsType' a)
-               | TsArray (TsType' a)
-               | TsObject (HashMap Text (TsType' a))
-               | TsTuple [TsType' a]
-               | TsNamedType a
-               | TsGenericArg Int
-               deriving (Show, Eq, Functor)
+data TsTypeBase a = TsVoid
+                  | TsNever
+                  | TsNull
+                  | TsBoolean
+                  | TsNumber
+                  | TsString
+                  | TsStringLiteral Text
+                  | TsUnion [TsTypeBase a]
+                  | TsMap (TsTypeBase a)
+                  | TsNullable (TsTypeBase a)
+                  | TsArray (TsTypeBase a)
+                  | TsObject (HashMap Text (TsTypeBase a))
+                  | TsTuple [TsTypeBase a]
+                  | TsNamedType TsTypeName [TsTypeBase a] a
+                  | TsGenericArg Int
+                  deriving (Show, Eq, Functor)
 
-type TsType = TsType' TsTypeDef
-type TsRefType = TsType' TsTypeRef
+type TsType = TsTypeBase TsDef
+type TsRefType = TsTypeBase ()
 
 {- TODO: Fork recursion-schemas to be able to handle this situation -}
 
-data TsType'F a r = TsVoidF
-                  | TsNeverF
-                  | TsNullF
-                  | TsBooleanF
-                  | TsNumberF
-                  | TsStringF
-                  | TsStringLiteralF Text
-                  | TsUnionF [r]
-                  | TsMapF r
-                  | TsNullableF r
-                  | TsArrayF r
-                  | TsObjectF (HashMap Text r)
-                  | TsTupleF [r]
-                  | TsNamedTypeF (a r)
-                  | TsGenericArgF Int
-                  deriving (Show)
+data TsTypeBaseF a r = TsVoidF
+                     | TsNeverF
+                     | TsNullF
+                     | TsBooleanF
+                     | TsNumberF
+                     | TsStringF
+                     | TsStringLiteralF Text
+                     | TsUnionF [r]
+                     | TsMapF r
+                     | TsNullableF r
+                     | TsArrayF r
+                     | TsObjectF (HashMap Text r)
+                     | TsTupleF [r]
+                     | TsNamedTypeF TsTypeName [r] (a r)
+                     | TsGenericArgF Int
+                     deriving (Show)
 
-deriving instance Functor (TsType'F TsTypeDefF)
-deriving instance Foldable (TsType'F TsTypeDefF)
-deriving instance Traversable (TsType'F TsTypeDefF)
+deriving instance Functor (TsTypeBaseF TsDefF)
+deriving instance Foldable (TsTypeBaseF TsDefF)
+deriving instance Traversable (TsTypeBaseF TsDefF)
 
-type instance Base TsType = TsType'F TsTypeDefF
+type instance Base TsType = TsTypeBaseF TsDefF
 
 instance Recursive TsType where
     project TsVoid = TsVoidF
@@ -117,7 +99,7 @@ instance Recursive TsType where
     project (TsArray a) = TsArrayF a
     project (TsObject a) = TsObjectF a
     project (TsTuple a) = TsTupleF a
-    project (TsNamedType (TsTypeDef r ts t)) = TsNamedTypeF (TsTypeDefF r ts t)
+    project (TsNamedType n ts (TsDef t)) = TsNamedTypeF n ts (TsDefF t)
     project (TsGenericArg a) = TsGenericArgF a 
 
 instance Corecursive TsType where
@@ -134,7 +116,7 @@ instance Corecursive TsType where
     embed (TsArrayF a) = TsArray a
     embed (TsObjectF a) = TsObject a
     embed (TsTupleF a) = TsTuple a
-    embed (TsNamedTypeF (TsTypeDefF r ts t)) = TsNamedType (TsTypeDef r ts t)
+    embed (TsNamedTypeF n ts (TsDefF t)) = TsNamedType n ts (TsDef t)
     embed (TsGenericArgF a) = TsGenericArg a
  
 data TsContext a = TsContext a (Map TsTypeName TsRefType)
@@ -192,14 +174,14 @@ instance Monad TsContext where
 {- Take a potentially infinitely recursive TsType and abstract out the common TsNamedTypes -}
 flatten :: TsType -> TsContext TsRefType
 flatten t = cata f t $ Set.empty
-    where f :: TsType'F TsTypeDefF (Set TsTypeName -> TsContext TsRefType) -> (Set TsTypeName -> TsContext TsRefType)
-          f (TsNamedTypeF (TsTypeDefF tr ts t)) s = if Set.member tr s
-                                                    then TsNamedType <$> TsTypeRef tr <$> sequence (ts <*> return s)
+    where f :: TsTypeBaseF TsDefF (Set TsTypeName -> TsContext TsRefType) -> (Set TsTypeName -> TsContext TsRefType)
+          f (TsNamedTypeF n ts (TsDefF t)) s = if Set.member n s
+                                                    then (flip $ TsNamedType n) () <$> sequence (ts <*> return s)
                                                     else do 
-                                                         let s' = Set.insert tr s
+                                                         let s' = Set.insert n s
                                                          t' <- t s' 
                                                          ts' <- sequence (ts <*> return s')
-                                                         TsContext (TsNamedType (TsTypeRef tr ts')) (Map.singleton tr t')
+                                                         TsContext (TsNamedType n ts' ()) (Map.singleton n t')
           f TsVoidF _ = pure TsVoid
           f TsNeverF _ = pure TsNever
           f TsNullF _ = pure TsNull

@@ -130,7 +130,7 @@ tsTypeName TsNumber = "number"
 tsTypeName TsString = "string"
 tsTypeName (TsStringLiteral n) = "\"" <> n <> "\""
 tsTypeName (TsNullable t) = tsTypeName t {- <> "?" -}
-tsTypeName (TsNamedType (TsTypeRef t _)) = tsCustomTypeName t 
+tsTypeName (TsNamedType n _ _) = tsCustomTypeName n
 tsTypeName (TsArray t) = "Array<" <> tsTypeName t <> ">"
 tsTypeName (TsMap t) = "{[key: string]: " <> tsTypeName t <> "}"
 
@@ -462,10 +462,10 @@ instance (TsTypeable a) => TsTypeable (Maybe a) where
     tsTypeRep _ = TsNullable (tsTypeRep (Proxy :: Proxy a))
 
 instance (TsTypeable a, TsTypeable b) => TsTypeable (Either a b) where
-    tsTypeRep _ = let t = TsUnion [TsObject $ HashMap.fromList [("Left", TsGenericArg 0)], 
-                                   TsObject $ HashMap.fromList [("Right", TsGenericArg 1)]]
+    tsTypeRep _ = let t = TsDef $ TsUnion [TsObject $ HashMap.fromList [("Left", TsGenericArg 0)], 
+                                           TsObject $ HashMap.fromList [("Right", TsGenericArg 1)]]
                       tn = mkTsTypeName (Proxy :: Proxy Either)
-                   in TsNamedType $ TsTypeDef tn [tsTypeRep (Proxy :: Proxy a), tsTypeRep (Proxy :: Proxy b)] t
+                   in TsNamedType tn [tsTypeRep (Proxy :: Proxy a), tsTypeRep (Proxy :: Proxy b)] t
 
 instance (TsTypeable a) => TsTypeable [a] where
     tsTypeRep _ = TsArray (tsTypeRep (Proxy :: Proxy a))
@@ -515,9 +515,9 @@ instance (TsTypeable v) => TsTypeable (IntMap v) where
     tsTypeRep _ = makeMap (Proxy :: Proxy Int) (Proxy :: Proxy v)
 
 instance (TsTypeable a, Typeable a) => TsTypeable (Tree a) where
-    tsTypeRep _ = let t = TsTuple [TsGenericArg 0, TsArray (tsTypeRep (Proxy :: Proxy (Tree a)))]
+    tsTypeRep _ = let t = TsDef $ TsTuple [TsGenericArg 0, TsArray (tsTypeRep (Proxy :: Proxy (Tree a)))]
                       tn = mkTsTypeName (Proxy :: Proxy Tree)
-                   in TsNamedType $ TsTypeDef tn [tsTypeRep (Proxy :: Proxy a)] t
+                   in TsNamedType tn [tsTypeRep (Proxy :: Proxy a)] t
 
 instance (TsTypeableKey k, TsTypeable v) => TsTypeable (Map.Map k v) where
     tsTypeRep _ = makeMap (Proxy :: Proxy k) (Proxy :: Proxy v)
