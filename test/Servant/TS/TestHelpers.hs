@@ -18,6 +18,8 @@ import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HashMap
 import Data.Set (Set)
 import qualified Data.Set as Set
+import Data.Text (Text)
+import qualified Data.Text as Text
 import Data.Typeable
 import Data.Vector (Vector)
 import qualified Data.Vector as Vector
@@ -26,17 +28,17 @@ import Test.Tasty.HUnit
 
 import Servant.TS
 
-reduceGenerics :: [TsType] -> TsType -> TsType
+reduceGenerics :: HashMap Text TsType -> TsType -> TsType
 reduceGenerics ts t = cata f t
 
     where f :: TsTypeBaseF TsDefF TsType -> TsType
-          f (TsGenericArgF i) = ts !! i 
+          f (TsGenericArgF s) = ts HashMap.! s 
           f x = embed x
 
-type Context = ([Value -> Maybe (TsType, Value)], Value) -> Maybe (TsType, Value)
+type Context = (HashMap Text (Value -> Maybe (TsType, Value)), Value) -> Maybe (TsType, Value)
 
 tsTypecheck :: TsType -> Value -> Maybe (TsType, Value)
-tsTypecheck t v = para f t $ ([], v)
+tsTypecheck t v = para f t $ (HashMap.empty, v)
 
     where f :: TsTypeBaseF TsDefF (TsType, Context) -> Context
           f TsNullF (_, Null) = Nothing
@@ -56,9 +58,9 @@ tsTypecheck t v = para f t $ ([], v)
                                                  then firstError $ (\((_, f), v) -> f (gs, v)) <$> zip ts (Vector.toList vs)
                                                  else mkError t v
           f (TsNamedTypeF n ts (TsDefF (_, f))) (gs, v) = f $ ((\(_, f') -> (\v -> f' (gs, v))) <$> ts, v)
-          f t@(TsGenericArgF i) (gs, v) = if i < length gs
-                                          then (gs !! i) v
-                                          else mkError t v
+          f t@(TsGenericArgF s) (gs, v) = case HashMap.lookup s gs of
+                                              Just f -> f v
+                                              Nothing -> mkError t v
           f t (_, v) = mkError t v
 
           firstError :: [Maybe a] -> Maybe a

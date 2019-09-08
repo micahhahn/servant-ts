@@ -462,10 +462,10 @@ instance (TsTypeable a) => TsTypeable (Maybe a) where
     tsTypeRep _ = TsNullable (tsTypeRep (Proxy :: Proxy a))
 
 instance (TsTypeable a, TsTypeable b) => TsTypeable (Either a b) where
-    tsTypeRep _ = let t = TsDef $ TsUnion [TsObject $ HashMap.fromList [("Left", TsGenericArg 0)], 
-                                           TsObject $ HashMap.fromList [("Right", TsGenericArg 1)]]
+    tsTypeRep _ = let t = TsDef $ TsUnion [TsObject $ HashMap.fromList [("Left", TsGenericArg "a")], 
+                                           TsObject $ HashMap.fromList [("Right", TsGenericArg "b")]]
                       tn = mkTsTypeName (Proxy :: Proxy Either)
-                   in TsNamedType tn [tsTypeRep (Proxy :: Proxy a), tsTypeRep (Proxy :: Proxy b)] t
+                   in TsNamedType tn (HashMap.fromList [("a", tsTypeRep (Proxy :: Proxy a)), ("b", tsTypeRep (Proxy :: Proxy b))]) t
 
 instance (TsTypeable a) => TsTypeable [a] where
     tsTypeRep _ = TsArray (tsTypeRep (Proxy :: Proxy a))
@@ -515,9 +515,10 @@ instance (TsTypeable v) => TsTypeable (IntMap v) where
     tsTypeRep _ = makeMap (Proxy :: Proxy Int) (Proxy :: Proxy v)
 
 instance (TsTypeable a, Typeable a) => TsTypeable (Tree a) where
-    tsTypeRep _ = let t = TsDef $ TsTuple [TsGenericArg 0, TsArray (tsTypeRep (Proxy :: Proxy (Tree a)))]
+    tsTypeRep _ = let t = TsDef $ TsTuple [TsGenericArg "a", TsArray (tsTypeRep (Proxy :: Proxy (Tree a)))]
                       tn = mkTsTypeName (Proxy :: Proxy Tree)
-                   in TsNamedType tn [tsTypeRep (Proxy :: Proxy a)] t
+                      ts = HashMap.fromList [("a", tsTypeRep (Proxy :: Proxy a))] 
+                   in TsNamedType tn ts t
 
 instance (TsTypeableKey k, TsTypeable v) => TsTypeable (Map.Map k v) where
     tsTypeRep _ = makeMap (Proxy :: Proxy k) (Proxy :: Proxy v)

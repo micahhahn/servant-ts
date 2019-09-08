@@ -53,8 +53,8 @@ data TsTypeBase a = TsVoid
                   | TsArray (TsTypeBase a)
                   | TsObject (HashMap Text (TsTypeBase a))
                   | TsTuple [TsTypeBase a]
-                  | TsNamedType TsTypeName [TsTypeBase a] a
-                  | TsGenericArg Int
+                  | TsNamedType TsTypeName (HashMap Text (TsTypeBase a)) a
+                  | TsGenericArg Text
                   deriving (Show, Eq, Functor)
 
 type TsType = TsTypeBase TsDef
@@ -75,8 +75,8 @@ data TsTypeBaseF a r = TsVoidF
                      | TsArrayF r
                      | TsObjectF (HashMap Text r)
                      | TsTupleF [r]
-                     | TsNamedTypeF TsTypeName [r] (a r)
-                     | TsGenericArgF Int
+                     | TsNamedTypeF TsTypeName (HashMap Text r) (a r)
+                     | TsGenericArgF Text
                      deriving (Show)
 
 deriving instance Functor (TsTypeBaseF TsDefF)
@@ -176,12 +176,12 @@ flatten :: TsType -> TsContext TsRefType
 flatten t = cata f t $ Set.empty
     where f :: TsTypeBaseF TsDefF (Set TsTypeName -> TsContext TsRefType) -> (Set TsTypeName -> TsContext TsRefType)
           f (TsNamedTypeF n ts (TsDefF t)) s = if Set.member n s
-                                                    then (flip $ TsNamedType n) () <$> sequence (ts <*> return s)
-                                                    else do 
-                                                         let s' = Set.insert n s
-                                                         t' <- t s' 
-                                                         ts' <- sequence (ts <*> return s')
-                                                         TsContext (TsNamedType n ts' ()) (Map.singleton n t')
+                                               then (flip $ TsNamedType n) () <$> sequence (fmap ($ s) ts)
+                                               else do 
+                                                    let s' = Set.insert n s
+                                                    t' <- t s' 
+                                                    ts' <- sequence (fmap ($ s') ts)
+                                                    TsContext (TsNamedType n ts' ()) (Map.singleton n t')
           f TsVoidF _ = pure TsVoid
           f TsNeverF _ = pure TsNever
           f TsNullF _ = pure TsNull
