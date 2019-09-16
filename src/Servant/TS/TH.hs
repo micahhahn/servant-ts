@@ -106,9 +106,6 @@ mkTopLevelTsTypeName n ts = do
     as <- sequence $ (\v -> [| mkTsTypeName (Proxy :: Proxy $(return v)) |]) <$> ts
     [| TsTypeName $(lift con) $(return $ ListE as) |]
 
-recoverLocalName :: Name -> Text
-recoverLocalName = Text.intercalate "_" . init . Text.split (== '_') . Text.pack . nameBase
-
 deriveTsTypeable :: Options -> Name -> Q [Dec]
 deriveTsTypeable opts name = do
     DatatypeInfo { datatypeInstTypes = vars
@@ -116,7 +113,7 @@ deriveTsTypeable opts name = do
     
     -- starArgs can be represented as generics in TypeScript
     let p = List.partition isStarT vars
-    let starArgs = [ (recoverLocalName n, (VarT n)) | (SigT (VarT n) _) <- fst p ] :: [(Text, Type)]
+    let starArgs = [ (Text.pack . nameBase $ n, (VarT n)) | (SigT (VarT n) _) <- fst p ] :: [(Text, Type)]
     let otherArgs = [ v | (SigT v _) <- snd p ]
 
     stvs <- isExtEnabled ScopedTypeVariables
