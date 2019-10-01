@@ -28,17 +28,10 @@ import Test.Tasty.HUnit
 
 import Servant.TS
 
-reduceGenerics :: HashMap Text TsType -> TsType -> TsType
-reduceGenerics ts t = cata f t
-
-    where f :: TsTypeBaseF TsDefF TsType -> TsType
-          f (TsGenericArgF s) = ts HashMap.! s 
-          f x = embed x
-
-type Context = (HashMap Text (Value -> Maybe (TsType, Value)), Value) -> Maybe (TsType, Value)
+type Context = ([Value -> Maybe (TsType, Value)], Value) -> Maybe (TsType, Value)
 
 tsTypecheck :: TsType -> Value -> Maybe (TsType, Value)
-tsTypecheck t v = para f t $ (HashMap.empty, v)
+tsTypecheck t v = para f t $ ([], v)
 
     where f :: TsTypeBaseF TsDefF (TsType, Context) -> Context
           f TsNullF (_, Null) = Nothing
@@ -58,9 +51,7 @@ tsTypecheck t v = para f t $ (HashMap.empty, v)
                                                  then firstError $ (\((_, f), v) -> f (gs, v)) <$> zip ts (Vector.toList vs)
                                                  else mkError t v
           f (TsNamedTypeF n ts (TsDefF (_, f))) (gs, v) = f $ ((\(_, f') -> (\v -> f' (gs, v))) <$> ts, v)
-          f t@(TsGenericArgF s) (gs, v) = case HashMap.lookup s gs of
-                                              Just f -> f v
-                                              Nothing -> mkError t v
+          f t@(TsGenericArgF s) (gs, v) = (gs !! s) v
           f t (_, v) = mkError t v
 
           firstError :: [Maybe a] -> Maybe a

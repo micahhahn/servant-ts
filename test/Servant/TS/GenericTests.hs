@@ -7,6 +7,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UndecidableInstances #-}
 
+{-# LANGUAGE MonoLocalBinds #-}
+
 module Servant.TS.GenericTests (
     genericTests
 ) where
@@ -109,6 +111,25 @@ data THKTTest a = HKTTestA (a Int)
     deriving (Typeable)
     
 deriveTsTypeable defaultOptions ''THKTTest
+
+data A a = A a
+-- deriveTsTypeable defaultOptions ''A
+
+data B b = B b (A b)
+-- deriveTsTypeable defaultOptions ''B
+
+data C' c1 c2 = C' (c1 Int) c2
+deriveTsTypeable defaultOptions ''C'
+
+data D' a d = D' (C' a d)
+-- deriveTsTypeable defaultOptions ''D'
+
+instance (TsTypeable (C' a d)) => TsTypeable (D' a d) where
+    tsTypeRep _ = tsTypeRep (Proxy :: Proxy (C' a d)) 
+
+-- x = flatten $ tsTypeRep (Proxy :: Proxy (B Int))
+-- y = flatten $ tsTypeRep (Proxy :: Proxy (B Bool))
+z = flatten $ tsTypeRep (Proxy :: Proxy (D' Maybe Int))
 
 genericTests :: TestTree
 genericTests = testGroup "Aeson <-> TS generic deriving isomorphic"

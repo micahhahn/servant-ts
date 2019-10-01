@@ -30,7 +30,11 @@ data ConName = ConName
 -- | Contains enough information to uniquely identify a top level typescript definition.
 -- | Note that not all type arguments need be named, only those of kind (k -> *). We represent these
 -- | in TypeScript as separate named types
-data TsTypeName = TsTypeName ConName [TsTypeName]
+data TsTypeName = TsTypeName ConName [TsTypeArg]
+    deriving (Show, Eq, Ord)
+
+data TsTypeArg = TsHKT TsTypeName -- ^ Higher kinded types aren't well supported in TypeScript, we just use a different top level declaration for each one
+               | TsGeneric Text -- ^ Arguments of kind * can be represented as generics in TypeScript
     deriving (Show, Eq, Ord)
 
 newtype TsDef = TsDef { unTsDef :: TsType }
@@ -53,8 +57,8 @@ data TsTypeBase a = TsVoid
                   | TsArray (TsTypeBase a)
                   | TsObject (HashMap Text (TsTypeBase a))
                   | TsTuple [TsTypeBase a]
-                  | TsNamedType TsTypeName (HashMap Text (TsTypeBase a)) a
-                  | TsGenericArg Text
+                  | TsNamedType TsTypeName [TsTypeBase a] a -- ^ References a top level type. Note that `length [(TsGeneric _) <- [TsTypeArg]]` must equal `length [TsTypeBase a]`
+                  | TsGenericArg Int -- ^ References one of the type arguments.  Note that the index is relative the generics only.
                   deriving (Show, Eq, Functor)
 
 type TsType = TsTypeBase TsDef
@@ -75,8 +79,8 @@ data TsTypeBaseF a r = TsVoidF
                      | TsArrayF r
                      | TsObjectF (HashMap Text r)
                      | TsTupleF [r]
-                     | TsNamedTypeF TsTypeName (HashMap Text r) (a r)
-                     | TsGenericArgF Text
+                     | TsNamedTypeF TsTypeName [r] (a r)
+                     | TsGenericArgF Int
                      deriving (Show)
 
 deriving instance Functor (TsTypeBaseF TsDefF)

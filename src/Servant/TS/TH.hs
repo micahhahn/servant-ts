@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -30,18 +31,24 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 
 import Servant.TS.Core
-import Servant.TS.Internal (TsTypeable(..), mkTsTypeName)
+import Servant.TS.Internal (TsTypeable(..))
 
 import Data.Functor.Foldable
 import Data.Functor.Foldable.TH
 import Data.Monoid (Any(..))
 import Data.Coerce (coerce)
 
+import Debug.Trace
+
+makeBaseFunctor ''Type
+
 deriveTsJSON :: Options -> Name -> Q [Dec]
 deriveTsJSON opts name = do
     ts <- deriveTsTypeable opts name
     js <- deriveJSON opts name
     return (ts ++ js) 
+
+{- TODO: Use reifyInstances -}
 
 {- $(stringE . show =<< reifyDatatype ''TFields) -}
 
@@ -69,9 +76,12 @@ getHKTypeApps ts t@(AppT l r) = if leftContains ts l
 getHKTypeApps _ _ = []
 
 mkConstraints :: Set Type -> [ConstructorInfo] -> [Pred]
-mkConstraints hkts cons = polyFields
+mkConstraints hkts cons = trace ("hkts: " ++ show hkts ++ ", cons: " ++ show cons) polyFields
     where fields = concat $ constructorFields <$> cons
-          polyFields = concat $ getHKTypeApps hkts <$> fields
+          polyFields = filter (containsHKT hkts) $ (trace (show fields) $ fields)
+
+containsHKT :: Set Type -> Type -> Bool
+containsHKT hkts t = coerce $ foldMap (Any . flip Set.member hkts) (project t)
 
 instance Lift Text where
     lift t = mkTextE (Text.unpack t)
@@ -100,11 +110,25 @@ isStarT _ = False
 mkTypeableConstraints :: [Type] -> [Pred]
 mkTypeableConstraints ts = [vn | (SigT vn (AppT l r)) <- ts]
 
+{- TODO: I don't think this is right.  Consider something like CustomType (Either Int) -}
+mkTsTypeName :: forall a p. (Typeable a) => p a -> TsTypeName
+mkTsTypeName p = fromRep $ typeRep p
+    where fromRep :: TypeRep -> TsTypeName
+          fromRep t = let (con, args) = splitTyConApp t
+                          mk f = Text.pack . f $ con
+                          cons =  ConName (mk tyConPackage) (mk tyConModule) (mk tyConName)
+                       in TsTypeName cons (TsHKT . fromRep <$> args)
+
 mkTopLevelTsTypeName :: Name -> [Type] -> Q Exp
 mkTopLevelTsTypeName n ts = do
     con <- mkConName n
-    as <- sequence $ (\v -> [| mkTsTypeName (Proxy :: Proxy $(return v)) |]) <$> ts
+    as <- sequence $ (\t -> case t of
+                                (SigT (VarT n) _) -> [| TsGeneric $(mkTextE . nameBase $ n) |]
+                                (SigT v _) -> [| mkTsTypeName (Proxy :: Proxy $(return v)) |]) <$> ts
     [| TsTypeName $(lift con) $(return $ ListE as) |]
+
+zipF :: [a -> b] -> [a] -> [b]
+zipF fs as = (\(f, a) -> f a) <$> zip fs as
 
 deriveTsTypeable :: Options -> Name -> Q [Dec]
 deriveTsTypeable opts name = do
@@ -113,18 +137,19 @@ deriveTsTypeable opts name = do
     
     -- starArgs can be represented as generics in TypeScript
     let p = List.partition isStarT vars
-    let starArgs = [ (Text.pack . nameBase $ n, (VarT n)) | (SigT (VarT n) _) <- fst p ] :: [(Text, Type)]
+    let starArgs = [ (VarT n) | (SigT (VarT n) _) <- fst p ] :: [Type]
     let otherArgs = [ v | (SigT v _) <- snd p ]
 
     stvs <- isExtEnabled ScopedTypeVariables
     when (not stvs && not (null vars)) (fail $ "You must have the " ++ show ScopedTypeVariables ++ " language extension enabled to derive TsTypeable for polymorphic type " ++ nameBase name ++ ".")
 
     ui <- isExtEnabled UndecidableInstances
-    when (not ui && not (null otherArgs)) (fail $ "You must have the " ++ show UndecidableInstances ++ " language extension enabled to derive TsTypeable for types with arguments of kind (k -> *)")
+    mlb <- isExtEnabled MonoLocalBinds
+    when ((not ui || not mlb) && not (null otherArgs)) (fail $ "You must have the " ++ show UndecidableInstances ++ " and " ++ show MonoLocalBinds ++ " language extensions enabled to derive TsTypeable for types with arguments of kind (k -> *)")
     
     {- We need to put TsTypeable constraints on any polymorphic types or applications of higher kinded polymorphics, as well as all polymorphic types -}
-    let constraints = Set.fromList $ mkConstraints (Set.fromList otherArgs) cons ++ (fmap snd starArgs)
-    mkInstanceD vars name constraints (mkTsTypeRep starArgs otherArgs cons)
+    let constraints = Set.fromList $ mkConstraints (Set.fromList otherArgs) cons ++ starArgs
+    mkInstanceD vars name constraints (mkTsTypeRep starArgs vars cons)
 
     where mkInstanceD :: [Type] -> Name -> Set Pred -> Q Dec -> Q [Dec] {- Q  instance (TsTypeable a, ...) => TsTypable x where  -}
           mkInstanceD ts n ps d = do
@@ -141,17 +166,17 @@ deriveTsTypeable opts name = do
                                      filtered = filter (\x -> True {- not $ Map.member x m -}) subTypes
                                   in Map.fromList <$> (sequence $ (\t -> (t,) <$> newName "ts") <$> filtered)
           
-          mkTsTypeRep :: [(Text, Type)] -> [Type] -> [ConstructorInfo] -> Q Dec
-          mkTsTypeRep starArgs otherArgs cons = do
-              let genericArgs = Map.fromList $ (\x -> (snd x, [| TsGenericArg $(lift . fst $ x) |])) <$> starArgs 
+          mkTsTypeRep :: [Type] -> [Type] -> [ConstructorInfo] -> Q Dec
+          mkTsTypeRep starArgs allArgs cons = do
+              let genericArgs = Map.fromList $ (\x -> (snd x, [| TsGenericArg $(lift . fst $ x) |])) <$> (zip ([0..] :: [Int]) starArgs) 
               let body = [| $(if tagSingleConstructors opts || length cons > 1
                               then let mk = if allNullaryToStringTag opts && all isNullaryCons cons then mkNullaryStringConsE else mkTaggedTypeE genericArgs
                                     in [| TsUnion $(ListE <$> sequence (mk <$> cons)) |]
                               else mkTypeE genericArgs (head cons))
                           |]
               
-              let gs = ListE <$> mapM (\(l, r) -> [| (l, $(mkVarRef Map.empty r)) |]) starArgs
-              let ref = [| TsNamedType $(mkTopLevelTsTypeName name otherArgs) (HashMap.fromList $gs) (TsDef $body) |]
+              let gs = ListE <$> mapM (mkVarRef Map.empty) starArgs
+              let ref = [| TsNamedType $(mkTopLevelTsTypeName name allArgs) $gs (TsDef $body) |]
               funD 'tsTypeRep [clause [wildP] (normalB ref) []]
             
           mkTypeE :: (Map Type ExpQ) -> ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
@@ -194,9 +219,25 @@ deriveTsTypeable opts name = do
           mkNormalFieldE = mkVarRef
 
           mkVarRef :: (Map Type ExpQ) -> Type -> Q Exp
-          mkVarRef m t = case Map.lookup t m of
-                             Just e -> e 
-                             Nothing -> [| tsTypeRep (Proxy :: Proxy $(return t)) |]
+          mkVarRef m t' = case Map.lookup t' m of
+                              Just e -> e 
+                              Nothing -> let gs' = getGenerics m t'
+                                          in if null gs' then [| tsTypeRep (Proxy :: Proxy $(return t')) |]
+                                                         else [| case tsTypeRep (Proxy :: Proxy $(return t')) of 
+                                                                    TsNamedType n gs t -> TsNamedType n (zipF ($(listE . getGenerics m $ t')) gs) t|]
+
+          {- What do we want it to look like? 
+             If we have a type with custom parameters 
+             case (tsTypeRep (Proxy :: Proxy x)) of
+                TsNamedType n gs t -> TsNamedType n (HashMap.union ) t -}
+
+          getGenerics :: (Map Type ExpQ) -> Type -> [ExpQ] {- [Q (TsType -> TsType)] -} 
+          getGenerics gs (AppT l r) = (f l ++ f r)
+            where f (AppT l r)  = f l ++ f r
+                  f t = case Map.lookup t gs of 
+                            Just t' -> [ [| const $t' |] ]
+                            Nothing -> [ [| id |] ]
+          getGenerics _ _ = []
 
           mkFieldStringE :: Name -> Q Exp {- Q String -}
           mkFieldStringE = mkTextE . (fieldLabelModifier opts) . nameBase
