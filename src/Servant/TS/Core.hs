@@ -58,7 +58,7 @@ data TsTypeBase a = TsVoid
                   | TsObject (HashMap Text (TsTypeBase a))
                   | TsTuple [TsTypeBase a]
                   | TsNamedType TsTypeName [TsTypeBase a] a -- ^ References a top level type. Note that `length [(TsGeneric _) <- [TsTypeArg]]` must equal `length [TsTypeBase a]`
-                  | TsGenericArg Int -- ^ References one of the type arguments.  Note that the index is relative the generics only.
+                  | TsGenericArg Int -- ^ References one of the type arguments.  Note that the index is relative to the generics only.
                   deriving (Show, Eq, Functor)
 
 type TsType = TsTypeBase TsDef
@@ -122,7 +122,7 @@ instance Corecursive TsType where
     embed (TsTupleF a) = TsTuple a
     embed (TsNamedTypeF n ts (TsDefF t)) = TsNamedType n ts (TsDef t)
     embed (TsGenericArgF a) = TsGenericArg a
- 
+
 data TsContext a = TsContext a (Map TsTypeName TsRefType)
     deriving (Show, Functor)
 

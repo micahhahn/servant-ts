@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -37,8 +38,6 @@ import Data.Functor.Foldable
 import Data.Functor.Foldable.TH
 import Data.Monoid (Any(..))
 import Data.Coerce (coerce)
-
-import Debug.Trace
 
 makeBaseFunctor ''Type
 
@@ -76,12 +75,17 @@ getHKTypeApps ts t@(AppT l r) = if leftContains ts l
 getHKTypeApps _ _ = []
 
 mkConstraints :: Set Type -> [ConstructorInfo] -> [Pred]
-mkConstraints hkts cons = trace ("hkts: " ++ show hkts ++ ", cons: " ++ show cons) polyFields
+mkConstraints hkts cons = polyFields
     where fields = concat $ constructorFields <$> cons
-          polyFields = filter (containsHKT hkts) $ (trace (show fields) $ fields)
+          polyFields = filter (containsHKT hkts) $ fields
 
 containsHKT :: Set Type -> Type -> Bool
-containsHKT hkts t = coerce $ foldMap (Any . flip Set.member hkts) (project t)
+-- containsHKT hkts t = coerce $ foldMap (Any . flip Set.member hkts) (project t)
+containsHKT hkts t = cata f t
+    where f (VarTF x) = Set.member (VarT x) hkts
+          f t' = coerce $ foldMap Any t'
+
+deriving instance Show a => Show (TypeF a)
 
 instance Lift Text where
     lift t = mkTextE (Text.unpack t)
@@ -224,7 +228,8 @@ deriveTsTypeable opts name = do
                               Nothing -> let gs' = getGenerics m t'
                                           in if null gs' then [| tsTypeRep (Proxy :: Proxy $(return t')) |]
                                                          else [| case tsTypeRep (Proxy :: Proxy $(return t')) of 
-                                                                    TsNamedType n gs t -> TsNamedType n (zipF ($(listE . getGenerics m $ t')) gs) t|]
+                                                                    TsNamedType n gs t -> TsNamedType n (zipF ($(listE . getGenerics m $ t')) gs) t
+                                                                    x -> x|]
 
           {- What do we want it to look like? 
              If we have a type with custom parameters 
