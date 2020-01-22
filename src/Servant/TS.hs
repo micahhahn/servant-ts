@@ -2,6 +2,8 @@ module Servant.TS (
     tsForAPI,
     module Servant.TS.Core,
     TsTypeable(..),
+    TsGenQuotes(..),
+    TsGenIndent(..),
     defaultTsGenOptions
 ) where
 
