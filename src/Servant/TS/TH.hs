@@ -47,33 +47,6 @@ deriveTsJSON opts name = do
     js <- deriveJSON opts name
     return (ts ++ js) 
 
-{- TODO: Use reifyInstances -}
-
-{- $(stringE . show =<< reifyDatatype ''TFields) -}
-
-{- 
-    We need contraints in the generated instance for:
-    * All fully saturated polymorphic types (with the exception of the type itself in the case of recursion) 
-    * All polymorphic types of kind * - even it it is not used
--}
-
--- Cases our passed in HKT X
--- X Int                  -> X `AppT` Int
--- X Int Int              -> (X `AppT` Int) `AppT` Int
--- Either (X Int) (X Int) -> (Either `AppT` (X `AppT` Int)) `AppT` (X `AppT` Int)
-
--- | Returns the saturated type application of higher kinded type parameters
-getHKTypeApps :: Set Type -> Type -> [Type]
-getHKTypeApps ts t@(AppT l r) = if leftContains ts l 
-                                then [t]
-                                else getHKTypeApps ts l ++ getHKTypeApps ts r
-    where leftContains :: Set Type -> Type -> Bool
-          leftContains ts t@(VarT _) = Set.member t ts
-          leftContains ts (AppT l _) = leftContains ts l
-          leftContains _ _ = False
-
-getHKTypeApps _ _ = []
-
 mkConstraints :: Set Type -> [ConstructorInfo] -> [Pred]
 mkConstraints hkts cons = polyFields
     where fields = concat $ constructorFields <$> cons
