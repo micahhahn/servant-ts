@@ -138,12 +138,14 @@ deriveTsTypeable opts name = do
     
     -- starArgs can be represented as generics in TypeScript
     let p = List.partition isStarT vars
-    let starArgs = [ (VarT n) | (SigT (VarT n) _) <- fst p ] :: [Type]
+    let starArgs = [ v | (SigT v _) <- fst p ]
     let otherArgs = [ v | (SigT v _) <- snd p ]
 
+    -- Show error if our type has arguments and ScopedTypeVariables is not enabled
     stvs <- isExtEnabled ScopedTypeVariables
     when (not stvs && not (null vars)) (fail $ "You must have the " ++ show ScopedTypeVariables ++ " language extension enabled to derive TsTypeable for polymorphic type " ++ nameBase name ++ ".")
 
+    -- Show error if our type has higher kinded arguments and UndecidableInstances and MonoLocalBinds are not enabled
     ui <- isExtEnabled UndecidableInstances
     mlb <- isExtEnabled MonoLocalBinds
     when ((not ui || not mlb) && not (null otherArgs)) (fail $ "You must have the " ++ show UndecidableInstances ++ " and " ++ show MonoLocalBinds ++ " language extensions enabled to derive TsTypeable for types with arguments of kind (k -> *)")
@@ -160,12 +162,6 @@ deriveTsTypeable opts name = do
               let ts' = classPred ''TsTypeable . (:[]) <$> (Set.toList ps)
               let typeables = classPred ''Typeable . (:[]) <$> (mkTypeableConstraints ts)
               return [InstanceD Nothing (ts' ++ typeables) n' [d']]
-                
-          {- Collects all subtypes in a data declaration and generates one unqiue var name for each -}
-          collectSubtypes :: Map Type ExpQ -> [ConstructorInfo] -> Q (Map Type Name)
-          collectSubtypes m cs = let subTypes = concat (constructorFields <$> cs)
-                                     filtered = filter (\x -> True {- not $ Map.member x m -}) subTypes
-                                  in Map.fromList <$> (sequence $ (\t -> (t,) <$> newName "ts") <$> filtered)
           
           mkTsTypeRep :: [Type] -> [Type] -> [ConstructorInfo] -> Q Dec
           mkTsTypeRep starArgs allArgs cons = do
@@ -227,11 +223,6 @@ deriveTsTypeable opts name = do
                                                          else [| case tsTypeRep (Proxy :: Proxy $(return t')) of 
                                                                     TsNamedType n gs t -> TsNamedType n (zipF ($(listE . getGenerics m $ t')) gs) t
                                                                     x -> x|]
-
-          {- What do we want it to look like? 
-             If we have a type with custom parameters 
-             case (tsTypeRep (Proxy :: Proxy x)) of
-                TsNamedType n gs t -> TsNamedType n (HashMap.union ) t -}
 
           getGenerics :: (Map Type ExpQ) -> Type -> [ExpQ] {- [Q (TsType -> TsType)] -} 
           getGenerics gs (AppT l r) = (f l ++ f r)
