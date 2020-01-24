@@ -114,21 +114,18 @@ isStarT _ = False
 mkTypeableConstraints :: [Type] -> [Pred]
 mkTypeableConstraints ts = [vn | (SigT vn (AppT l r)) <- ts]
 
-{- TODO: I don't think this is right.  Consider something like CustomType (Either Int) -}
-mkTsTypeName :: forall a p. (Typeable a) => p a -> TsTypeName
-mkTsTypeName p = fromRep $ typeRep p
-    where fromRep :: TypeRep -> TsTypeName
-          fromRep t = let (con, args) = splitTyConApp t
-                          mk f = Text.pack . f $ con
-                          cons =  ConName (mk tyConPackage) (mk tyConModule) (mk tyConName)
-                       in TsTypeName cons (TsHKT . fromRep <$> args)
+mkTsTypeName :: TypeRep -> TsTypeName
+mkTsTypeName t = let (con, args) = splitTyConApp t
+                     mk f = Text.pack . f $ con
+                     cons =  ConName (mk tyConPackage) (mk tyConModule) (mk tyConName)
+                  in TsTypeName cons (TsHKT . mkTsTypeName <$> args)
 
 mkTopLevelTsTypeName :: Name -> [Type] -> Q Exp
 mkTopLevelTsTypeName n ts = do
     con <- mkConName n
     as <- sequence $ (\t -> case t of
-                                (SigT (VarT n) _) -> [| TsGeneric $(mkTextE . nameBase $ n) |]
-                                (SigT v _) -> [| mkTsTypeName (Proxy :: Proxy $(return v)) |]) <$> ts
+                                (SigT (VarT n) StarT) -> [| TsGeneric $(mkTextE . nameBase $ n) |]
+                                (SigT v _) -> [| TsHKT (mkTsTypeName (typeRep (Proxy :: Proxy $(return v)))) |]) <$> ts
     [| TsTypeName $(lift con) $(return $ ListE as) |]
 
 zipF :: [a -> b] -> [a] -> [b]
