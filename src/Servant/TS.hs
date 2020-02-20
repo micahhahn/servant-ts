@@ -9,3 +9,4 @@ module Servant.TS (
 
 import Servant.TS.Internal
 import Servant.TS.Core
+import Servant.TS.Gen
