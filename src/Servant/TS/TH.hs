@@ -1,12 +1,19 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
+
+#if __GLASGOW_HASKELL__ >= 800
+{-# LANGUAGE TemplateHaskellQuotes #-}
+#else
+{-# LANGUAGE TemplateHaskell #-}
+#endif
 
 module Servant.TS.TH (
     deriveTsJSON,
@@ -39,8 +46,6 @@ import Data.Functor.Foldable.TH
 import Data.Monoid (Any(..))
 import Data.Coerce (coerce)
 
-makeBaseFunctor ''Type
-
 deriveTsJSON :: Options -> Name -> Q [Dec]
 deriveTsJSON opts name = do
     ts <- deriveTsTypeable opts name
@@ -53,24 +58,24 @@ mkConstraints hkts cons = polyFields
           polyFields = filter (containsHKT hkts) $ fields
 
 containsHKT :: Set Type -> Type -> Bool
--- containsHKT hkts t = coerce $ foldMap (Any . flip Set.member hkts) (project t)
-containsHKT hkts t = cata f t
-    where f (VarTF x) = Set.member (VarT x) hkts
-          f t' = coerce $ foldMap Any t'
-
-deriving instance Show a => Show (TypeF a)
+containsHKT hkts = f
+    where f (ForallT _ _ t) = f t
+          f (AppT l r) = f l || f r
+          f (SigT l r) = f l || f r
+          f (VarT x) =  Set.member (VarT x) hkts
+          f _ = False
 
 instance Lift Text where
     lift t = mkTextE (Text.unpack t)
 
 instance Lift ConName where
-    lift (ConName p m n) = [| ConName $(lift p) $(lift m) $(lift n) |]
+    lift (ConName p m n) = [| ConName |] `appE` (lift p) `appE` (lift m) `appE` (lift n)
 
 mkTextE :: String -> Q Exp {- Q Text -}
 mkTextE s = do
     os <- isExtEnabled OverloadedStrings
     if os then return . LitE . StringL $ s
-            else [| Text.pack $(return . LitE . StringL $ s) |]
+          else [| Text.pack |] `appE` (litE . StringL $ s)
 
 mkConName :: Name -> Q ConName
 mkConName n = do
@@ -93,13 +98,16 @@ mkTsTypeName t = let (con, args) = splitTyConApp t
                      cons =  ConName (mk tyConPackage) (mk tyConModule) (mk tyConName)
                   in TsTypeName cons (TsHKT . mkTsTypeName <$> args)
 
+mkProxy :: Type -> ExpQ
+mkProxy t = [| Proxy |] `sigE` ([t| Proxy |] `appT` (return t))
+
 mkTopLevelTsTypeName :: Name -> [Type] -> Q Exp
 mkTopLevelTsTypeName n ts = do
     con <- mkConName n
-    as <- sequence $ (\t -> case t of
-                                (SigT (VarT n) StarT) -> [| TsGeneric $(mkTextE . nameBase $ n) |]
-                                (SigT v _) -> [| TsHKT (mkTsTypeName (typeRep (Proxy :: Proxy $(return v)))) |]) <$> ts
-    [| TsTypeName $(lift con) $(return $ ListE as) |]
+    let as = (\case
+                (SigT (VarT n) StarT) -> [| TsGeneric |] `appE` (mkTextE . nameBase $ n)
+                (SigT v _) -> [| TsHKT |] `appE` ([| mkTsTypeName |] `appE` ([| typeRep |] `appE` mkProxy v))) <$> ts
+    [| TsTypeName |] `appE` lift con `appE` listE as
 
 zipF :: [a -> b] -> [a] -> [b]
 zipF fs as = (\(f, a) -> f a) <$> zip fs as
@@ -130,7 +138,7 @@ deriveTsTypeable opts name = do
     where mkInstanceD :: [Type] -> Name -> Set Pred -> Q Dec -> Q [Dec] {- Q  instance (TsTypeable a, ...) => TsTypable x where  -}
           mkInstanceD ts n ps d = do
               con <- conT n
-              n' <- [t| TsTypeable $(return $ foldl AppT (ConT n) ((\(SigT v _) -> v) <$> ts) ) |]
+              n' <- [t| TsTypeable |] `appT` (return $ foldl AppT (ConT n) ((\(SigT v _) -> v) <$> ts)) 
               d' <- d
               let ts' = classPred ''TsTypeable . (:[]) <$> (Set.toList ps)
               let typeables = classPred ''Typeable . (:[]) <$> (mkTypeableConstraints ts)
@@ -138,15 +146,14 @@ deriveTsTypeable opts name = do
           
           mkTsTypeRep :: [Type] -> [Type] -> [ConstructorInfo] -> Q Dec
           mkTsTypeRep starArgs allArgs cons = do
-              let genericArgs = Map.fromList $ (\x -> (snd x, [| TsGenericArg $(lift . fst $ x) |])) <$> (zip ([0..] :: [Int]) starArgs) 
-              let body = [| $(if tagSingleConstructors opts || length cons > 1
-                              then let mk = if allNullaryToStringTag opts && all isNullaryCons cons then mkNullaryStringConsE else mkTaggedTypeE genericArgs
-                                    in [| TsUnion $(ListE <$> sequence (mk <$> cons)) |]
-                              else mkTypeE genericArgs (head cons))
-                          |]
+              let genericArgs = Map.fromList $ (\x -> (snd x, [| TsGenericArg |] `appE` (lift . fst $ x))) <$> (zip ([0..] :: [Int]) starArgs) 
+              let body = if tagSingleConstructors opts || length cons > 1
+                         then let mk = if allNullaryToStringTag opts && all isNullaryCons cons then mkNullaryStringConsE else mkTaggedTypeE genericArgs
+                               in [| TsUnion |] `appE` listE (mk <$> cons)
+                         else mkTypeE genericArgs (head cons)
               
               let gs = ListE <$> mapM (mkVarRef Map.empty) starArgs
-              let ref = [| TsNamedType $(mkTopLevelTsTypeName name allArgs) $gs (TsDef $body) |]
+              let ref = [| TsNamedType |] `appE` (mkTopLevelTsTypeName name allArgs) `appE` gs `appE` ([| TsDef |] `appE` body)
               funD 'tsTypeRep [clause [wildP] (normalB ref) []]
             
           mkTypeE :: (Map Type ExpQ) -> ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
@@ -156,34 +163,38 @@ deriveTsTypeable opts name = do
 
           makeTupleE :: [Q Exp] -> Q Exp {- [Q TsContext TsType] -> Q (TsContext TsType) -}
           makeTupleE ts = case ts of
-                              [t'] -> [| $t' |]
-                              ts' -> [| TsTuple $(ListE <$> sequence ts') |]
+                              [t'] -> t'
+                              ts' -> [| TsTuple |] `appE` listE ts'
 
           makeRecordE :: [Q Exp] -> Q Exp {- [Q (Text, TsContext TsType)] -> Q (TsContext TsType) -}
           makeRecordE ts = if (unwrapUnaryRecords opts) && length ts == 1
-                           then [| snd $(head ts) |]
-                           else [| TsObject $ HashMap.fromList $(ListE <$> sequence ts) |]
+                           then [| snd |] `appE` head ts
+                           else [| TsObject |] `appE` ([| HashMap.fromList |] `appE` listE ts)
 
           isNullaryCons :: ConstructorInfo -> Bool
-          isNullaryCons = (\x -> length x == 0) . constructorFields 
+          isNullaryCons = null . constructorFields 
 
           mkNullaryStringConsE :: ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
-          mkNullaryStringConsE c = [| TsStringLiteral $(mkConStringE . constructorName $ c) |]
+          mkNullaryStringConsE c = [| TsStringLiteral |] `appE` (mkConStringE . constructorName $ c)
 
-          mkTaggedTypeE :: (Map Type ExpQ) -> ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
-          mkTaggedTypeE m c = let conE = [| TsStringLiteral $(mkConStringE $ constructorName c) |]
+          mkTaggedTypeE :: Map Type ExpQ -> ConstructorInfo -> Q Exp {- Q (TsContext TsType) -}
+          mkTaggedTypeE m c = let conE = [| TsStringLiteral |] `appE` (mkConStringE . constructorName $ c)
                                in case sumEncoding opts of
                                       (TaggedObject tn cn) -> case constructorVariant c of
                                                                   NormalConstructor -> case constructorFields c of
-                                                                                      [] -> [| TsObject $ HashMap.singleton $(mkTextE tn) $conE |]
-                                                                                      _ -> [| TsObject $ HashMap.fromList [($(mkTextE tn), $conE), ($(mkTextE cn), $(mkTypeE m c))] |]
-                                                                  RecordConstructor ns -> makeRecordE $ [| ($(mkTextE tn), TsStringLiteral $ $(mkConStringE $ constructorName c)) |] : (mkRecordFieldE m <$> zip ns (constructorFields c))
+                                                                                      [] -> [| TsObject |] `appE` ([| HashMap.singleton |] `appE` mkTextE tn `appE` conE)
+                                                                                      _ -> let item1 = [| (,) |] `appE` mkTextE tn `appE` conE
+                                                                                               item2 = [| (,) |] `appE` mkTextE cn `appE` mkTypeE m c
+                                                                                            in [| TsObject |] `appE` ([| HashMap.fromList |] `appE` listE [item1, item2])
+                                                                  RecordConstructor ns -> let head' = [| (,) |] `appE` mkTextE tn `appE` ([| TsStringLiteral |] `appE` (mkConStringE . constructorName $ c))
+                                                                                              tail' = mkRecordFieldE m <$> zip ns (constructorFields c)
+                                                                                           in makeRecordE (head' : tail')
                                       UntaggedValue -> mkTypeE m c
-                                      ObjectWithSingleField -> [| TsObject $ HashMap.singleton $(mkConStringE $ constructorName c) $(mkTypeE m c) |]
-                                      TwoElemArray -> [| TsTuple [$conE, $(mkTypeE m c)] |]
+                                      ObjectWithSingleField -> [| TsObject |] `appE` ([| HashMap.singleton |] `appE` (mkConStringE . constructorName $ c) `appE` (mkTypeE m c))
+                                      TwoElemArray -> [| TsTuple |] `appE` listE [conE, mkTypeE m c]
 
           mkRecordFieldE :: (Map Type ExpQ) -> (Name, Type) -> Q Exp {- Q (Text, TsContext TsType) -}
-          mkRecordFieldE m (n, t) = [| ($(mkFieldStringE n), $(mkVarRef m t)) |]
+          mkRecordFieldE m (n, t) = [| (,) |] `appE` mkFieldStringE n `appE` mkVarRef m t
 
           mkNormalFieldE :: (Map Type ExpQ) -> Type -> Q Exp {- Q (TsContext TsType) -}
           mkNormalFieldE = mkVarRef
@@ -192,21 +203,26 @@ deriveTsTypeable opts name = do
           mkVarRef m t' = case Map.lookup t' m of
                               Just e -> e 
                               Nothing -> let gs' = getGenerics m t'
-                                          in if null gs' then [| tsTypeRep (Proxy :: Proxy $(return t')) |]
-                                                         else [| case tsTypeRep (Proxy :: Proxy $(return t')) of 
-                                                                    TsNamedType n gs t -> TsNamedType n (zipF ($(listE . getGenerics m $ t')) gs) t
-                                                                    x -> x|]
+                                          in if null gs' then [| tsTypeRep |] `appE` mkProxy t'
+                                                         else let match1 = do n <- newName "n"
+                                                                              gs <- newName "gs"
+                                                                              t <- newName "t"
+                                                                              let body = [| TsNamedType |] `appE` (varE n) `appE` ([| zipF |] `appE` (listE . getGenerics m $ t') `appE` varE gs) `appE` (varE t)
+                                                                              match (conP 'TsNamedType [varP n, varP gs, varP t]) (normalB $ body) []
+                                                                  match2 = do n <- newName "x" 
+                                                                              match (varP n) (normalB . varE $ n ) []
+                                                               in caseE ([| tsTypeRep |] `appE` mkProxy t') [ match1, match2 ]
 
           getGenerics :: (Map Type ExpQ) -> Type -> [ExpQ] {- [Q (TsType -> TsType)] -} 
           getGenerics gs (AppT l r) = (f l ++ f r)
             where f (AppT l r)  = f l ++ f r
                   f t = case Map.lookup t gs of 
-                            Just t' -> [ [| const $t' |] ]
+                            Just t' -> [ [| const |] `appE` t' ]
                             Nothing -> [ [| id |] ]
           getGenerics _ _ = []
 
           mkFieldStringE :: Name -> Q Exp {- Q String -}
-          mkFieldStringE = mkTextE . (fieldLabelModifier opts) . nameBase
+          mkFieldStringE = mkTextE . fieldLabelModifier opts . nameBase
         
           mkConStringE :: Name -> Q Exp {- Q String -}
-          mkConStringE = mkTextE . (constructorTagModifier opts) . nameBase
+          mkConStringE = mkTextE . constructorTagModifier opts . nameBase
