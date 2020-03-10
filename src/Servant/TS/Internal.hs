@@ -1,11 +1,9 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DefaultSignatures #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PolyKinds #-}
@@ -16,7 +14,9 @@
 
 module Servant.TS.Internal where
 
+import Data.Aeson.TH (Options(..), SumEncoding(..), defaultOptions)
 {- import Data.DList (DList) -}
+import Data.Bifunctor (first)
 import Data.Fixed (Fixed, HasResolution)
 import Data.Functor.Compose (Compose)
 import Data.Functor.Const (Const)
@@ -71,136 +71,153 @@ import Servant.Foreign
 
 import Servant.TS.Core
 
+data TConstructor = TRecord String [(String, TsType)]
+                  | TConstructor String [TsType]
+    deriving (Show)
 
+data TDatatype = TDatatype TsTypeName [TConstructor]
+
+mkTsType :: Options -> [TsType] -> TDatatype -> TsType
+mkTsType opts gs (TDatatype tn cs) =
+    let t = case tagSingleConstructors opts || length cs > 1 of
+                True -> TsUnion $ (case allNullaryToStringTag opts && all isNullaryCons cs of
+                                       True -> TsStringLiteral . conName
+                                       False -> \c -> tagCons (conName c) (mkCons c)) <$> cs
+                False -> mkCons . head $ cs -- Empty datatype?
+     in TsNamedType tn gs (TsDef t)
+
+    where tagCons :: Text -> TsType -> TsType
+          tagCons n con = case sumEncoding opts of
+              TaggedObject tn cn -> 
+                  let conNamePair = ((Text.pack tn), TsStringLiteral n)
+                  in case con of
+                        TsTuple [] -> TsObject . HashMap.fromList $ [conNamePair]
+                        TsObject ts -> TsObject $ uncurry HashMap.insert conNamePair ts
+                        x -> TsObject . HashMap.fromList $ conNamePair : [(Text.pack cn, x)]
+              UntaggedValue -> con
+              ObjectWithSingleField -> TsObject $ HashMap.singleton n con
+              TwoElemArray -> TsTuple [TsStringLiteral n, con]
+
+          mkCons :: TConstructor -> TsType
+          mkCons (TConstructor _ [t]) = t
+          mkCons (TConstructor _ ts) = TsTuple ts
+          mkCons (TRecord _ ts) = case unwrapUnaryRecords opts && length ts == 1 of
+              True -> snd . head $ ts
+              False -> TsObject . HashMap.fromList $ first (Text.pack . fieldLabelModifier opts) <$> ts
+
+          isNullaryCons :: TConstructor -> Bool
+          isNullaryCons (TRecord _ []) = True
+          isNullaryCons (TConstructor _ []) = True
+          isNullaryCons _ = False
+
+          conName :: TConstructor -> Text 
+          conName = \case
+              TRecord n _ -> f n
+              TConstructor n _ -> f n
+              where f = Text.pack . constructorTagModifier opts      
 
 mkTsConName :: forall a p. (Typeable a) => p a -> ConName
 mkTsConName p = ConName (mk tyConPackage) (mk tyConModule) (mk tyConName)
     where con = typeRepTyCon . typeRep $ p
           mk f = Text.pack . f $ con
 
+mkTsTypeName :: TypeRep -> Int -> TsTypeName
+mkTsTypeName t = let (con, args) = splitTyConApp t
+                     mk f = Text.pack . f $ con
+                     cons =  ConName (mk tyConPackage) (mk tyConModule) (mk tyConName)
+                  in TsTypeName cons (($ 0) . mkTsTypeName <$> args)
+
+genericTsTypeable :: forall a. (Typeable a, Generic a, GTsDatatype (Rep a)) => Options -> Proxy a -> TsType
+genericTsTypeable opts _ = mkTsType opts [] (TDatatype x cs)
+    where x = mkTsTypeName (typeRep (Proxy :: Proxy a)) 0
+          cs = tsDataType $ from (undefined :: a)
+
+generic1TsTypeable :: forall a p. (Typeable a, TsTypeable p, Generic1 a, GTsDatatype1 (Rep1 a p)) => Options -> Proxy (a p) -> TsType
+generic1TsTypeable opts prox = mkTsType opts [tsTypeRep (Proxy :: Proxy p)] $ TDatatype x cs
+    where x = mkTsTypeName (typeRep (Proxy :: Proxy a)) 1
+          cs = tsDataType1 $ from1 (undefined :: a p)
+
 class TsTypeable a where
     tsTypeRep :: Proxy a -> TsType
-    {-default tsTypeRep :: forall s. (TsStrategy s a) => Proxy a -> TsType
-    tsTypeRep = deriveTsTypeRep @s
+    default tsTypeRep :: (Typeable a, Generic a, GTsDatatype (Rep a)) => Proxy a -> TsType
+    tsTypeRep = genericTsTypeable defaultOptions
 
-data TsDerivingStrategy = TsGeneric 
-                        | TsGeneric1
+class GTsDatatype (a :: * -> *) where
+    tsDataType :: a p -> [TConstructor]
+ 
+instance (Datatype a, GTsConstructor c) => GTsDatatype (D1 a c) where
+    tsDataType (M1 r) = tsConstructor r
 
-class DeriveTsTypeRep (s :: TsDerivingStrategy) a where
-    deriveTsTypeRep :: Proxy a -> TsContext TsType
-                        
-class DeriveTsTypeRep s a => TsStrategy (s :: TsDerivingStrategy) a | a -> s where
+class GTsConstructor a where
+    tsConstructor :: a p -> [TConstructor]
 
-instance (Generic a, Typeable a, TsDatatype (Rep a)) => DeriveTsTypeRep 'TsGeneric a where
-    deriveTsTypeRep _ = tsDatatype (from (undefined :: a)) (typeRep (Proxy :: Proxy a)) 
+instance (GTsConstructor a, GTsConstructor b) => GTsConstructor (a :+: b) where
+    tsConstructor (_ :: (a :+: b) f) = tsConstructor (undefined :: a f) ++ tsConstructor (undefined :: b f)
 
-class TsDatatype a where
-    tsDatatype :: a p -> TypeRep -> TsContext TsType
+instance (Constructor a, GTsSelector c) => GTsConstructor (C1 a c) where
+    tsConstructor c@(M1 r) = case conIsRecord c of
+                                True -> [TRecord (conName c) (tsSelector r)]
+                                False -> [TConstructor (conName c) (snd <$> tsSelector r)]
 
-instance (Datatype a, TsConstructor c) => TsDatatype (D1 a c) where
-    tsDatatype c@(M1 r) t = do
-        cons <- tsConstructor r
-        let tsType = if length cons == 1 then snd . head $ cons
-                                            else TsUnion (makeUnion <$> cons)
-        TsContext (TsRef t []) (Map.insert t tsType Map.empty)    
+class GTsSelector a where
+    tsSelector :: a p -> [(String, TsType)]
 
-        where makeUnion (n, (TsObject ts')) = TsObject (("tag", TsStringLiteral n): ts')
-              makeUnion (n, (TsTuple ts')) = case ts' of
-                                                 [] ->  TsObject [("tag", TsStringLiteral n)]
-                                                 _ -> TsObject [("tag", TsStringLiteral n), ("contents", TsTuple ts')] 
-              makeUnion (n, t) = TsObject [("tag", TsStringLiteral n), ("contents", t)]
+instance (GTsSelector a, GTsSelector b) => GTsSelector (a :*: b) where
+    tsSelector (_ :: (a :*: b) f) = tsSelector (undefined :: a f) ++ tsSelector (undefined :: b f)
 
-class TsConstructor a where
-    tsConstructor :: a p -> TsContext [(Text, TsType)]
+instance (Selector a, TsTypeable c, Typeable c) => GTsSelector (S1 a (K1 b c)) where
+    tsSelector q@(M1 (K1 t)) = [(selName q, tsTypeRep (Proxy :: Proxy c))]
 
-instance (TsConstructor a, TsConstructor b) => TsConstructor (a :+: b) where
-    tsConstructor (_ :: (a :+: b) f) = do
-        l <- (tsConstructor (undefined :: a f))
-        r <- (tsConstructor (undefined :: b f))
-        return $ l ++ r
+instance GTsSelector U1 where
+    tsSelector _ = []
 
-instance (Constructor a, TsSelector c) => TsConstructor (C1 a c) where
-    tsConstructor c@(M1 r) = do
-        sels <- tsSelector r
-        let n = sanitizeTSName . Text.pack . conName $ c
-        let tsType = if conIsRecord c then TsObject sels
-                                        else case snd <$> sels of
-                                                t:[] -> t
-                                                ts -> TsTuple ts
-        return [(n, tsType)]
+class GTsDatatype1 (a :: *) where
+    tsDataType1 :: a -> [TConstructor]
 
-class TsSelector a where
-        tsSelector :: a p -> TsContext [(Text, TsType)]
+instance forall a (c :: * -> *) (p :: *). (Datatype a, GTsConstructor1 (c p)) => GTsDatatype1 (D1 a c p) where
+    tsDataType1 (M1 r) = tsConstructor1 r
 
-instance (TsSelector a, TsSelector b) => TsSelector (a :*: b) where
-    tsSelector (_ :: (a :*: b) f) = do
-        l <- tsSelector (undefined :: a f)
-        r <- tsSelector (undefined :: b f)
-        return $ l ++ r
+class GTsConstructor1 (a :: *) where
+    tsConstructor1 :: a -> [TConstructor]
 
-instance (Selector a, TsTypeable c, Typeable c) => TsSelector (S1 a (K1 b c)) where
-    tsSelector q@(M1 (K1 t)) = do
-        tsType <- tsTypeRep (Proxy :: Proxy c)
-        return [(Text.pack . selName $ q, tsType)]
+instance forall (a :: * -> *) (b :: * -> *) (p :: *). (GTsConstructor1 (a p), GTsConstructor1 (b p)) => GTsConstructor1 ((a :+: b) p) where
+    tsConstructor1 _ = tsConstructor1 (undefined :: a p) ++ tsConstructor1 (undefined :: b p)
 
-instance TsSelector U1 where
-    tsSelector _ = return []
+instance (Constructor a, GTsSelector1 (c p)) => GTsConstructor1 (C1 a c p) where
+    tsConstructor1 c@(M1 r) = case conIsRecord c of
+                                  True -> [TRecord (conName c) (tsSelector1 r)]
+                                  False -> [TConstructor (conName c) (snd <$> tsSelector1 r)]
 
-instance (Generic1 a, Typeable (a p), TsDatatype1 (Rep1 a)) => DeriveTsTypeRep 'TsGeneric1 (a p) where
-    deriveTsTypeRep _ = tsDatatype1 (from1 (undefined :: a p)) (typeRep (Proxy :: Proxy (a p))) 
+class GTsSelector1 (a :: *) where
+    tsSelector1 :: a -> [(String, TsType)]
 
-class TsDatatype1 a where
-    tsDatatype1 :: a p -> TypeRep -> TsContext TsType
-    
-instance (Datatype a, TsConstructor1 c) => TsDatatype1 (D1 a c) where
-    tsDatatype1 c@(M1 r) t = do
-        cons <- tsConstructor1 r
-        let tsType = if length cons == 1 then snd . head $ cons
-                                         else TsUnion (makeUnion <$> cons)
-        TsContext (TsRef t []) (Map.insert t tsType Map.empty)    
+instance forall a b p. (GTsSelector1 (a p), GTsSelector1 (b p)) => GTsSelector1 ((a :*: b) p) where
+    tsSelector1 _ = tsSelector1 (undefined :: a p) ++ tsSelector1 (undefined :: b p)
 
-        where makeUnion (n, (TsObject ts')) = TsObject (("tag", TsStringLiteral n): ts')
-              makeUnion (n, (TsTuple ts')) = case ts' of
-                                                 [] ->  TsObject [("tag", TsStringLiteral n)]
-                                                 _ -> TsObject [("tag", TsStringLiteral n), ("contents", TsTuple ts')] 
-              makeUnion (n, t) = TsObject [("tag", TsStringLiteral n), ("contents", t)]
-    
-class TsConstructor1 a where
-    tsConstructor1 :: a p -> TsContext [(Text, TsType)]
+instance (Selector a, TsTypeable c) => GTsSelector1 (S1 a (K1 b c) p) where 
+    tsSelector1 q@(M1 (K1 t)) = [(selName q, tsTypeRep (Proxy :: Proxy c))]
 
-instance (TsConstructor1 a, TsConstructor1 b) => TsConstructor1 (a :+: b) where
-    tsConstructor1 (_ :: (a :+: b) f) = do
-        l <- (tsConstructor1 (undefined :: a f))
-        r <- (tsConstructor1 (undefined :: b f))
-        return $ l ++ r
+instance GTsSelector1 (U1 p) where
+    tsSelector1 _ = []
 
-instance (Constructor a, TsSelector1 c) => TsConstructor1 (C1 a c) where
-    tsConstructor1 c@(M1 r) = do
-        sels <- tsSelector1 r
-        let n = sanitizeTSName . Text.pack . conName $ c
-        let tsType = if conIsRecord c then TsObject sels
-                                        else case snd <$> sels of
-                                                t:[] -> t
-                                                ts -> TsTuple ts
-        return [(n, tsType)]
+instance (Selector a) => GTsSelector1 (S1 a Par1 p) where
+    tsSelector1 q = [(selName q, TsGenericArg 0)]
 
-class TsSelector1 a where
-    tsSelector1 :: a p -> TsContext [(Text, TsType)]
+instance (Selector a, TsTypeable (f p)) => GTsSelector1 (S1 a (Rec1 f) p) where
+    tsSelector1 q = [(selName q, t')]
+        where t = tsTypeRep (Proxy :: Proxy (f p))
+              t' = case t of
+                       TsNamedType tn gs d -> TsNamedType tn (take (length gs - 1) gs ++ [TsGenericArg 0]) d
+                       x -> x
 
-instance (TsSelector1 a, TsSelector1 b) => TsSelector1 (a :*: b) where
-    tsSelector1 (_ :: (a :*: b) f) = do
-        l <- tsSelector1 (undefined :: a f)
-        r <- tsSelector1 (undefined :: b f)
-        return $ l ++ r
+tsObject :: [(Text, TsType)] -> TsType 
+tsObject = undefined
+ 
+(~=) :: forall a. TsTypeable a => Text -> a -> (Text, TsType)
+t ~= v = (t, tsTypeRep (Proxy :: Proxy a))
 
-instance (Selector a, TsTypeable c, Typeable c) => TsSelector1 (S1 a (K1 b c)) where
-    tsSelector1 q@(M1 (K1 t)) = do
-        tsType <- tsTypeRep (Proxy :: Proxy c)
-        return [(Text.pack . selName $ q, tsType)]
-
-instance (Selector a) => TsSelector1 (S1 a Par1) where
-    tsSelector1 q = return [(Text.pack . selName $ q, TsGenericArg 0)]
--}
+makeTsType :: Typeable a => TsType -> Proxy a -> TsType
+makeTsType t p = TsNamedType (mkTsTypeName (typeRep p) 0) [] (TsDef t)
 
 instance TsTypeable Bool where
     tsTypeRep _ = TsBoolean

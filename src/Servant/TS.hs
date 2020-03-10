@@ -4,7 +4,11 @@ module Servant.TS (
     TsTypeable(..),
     TsGenQuotes(..),
     TsGenIndent(..),
-    defaultTsGenOptions
+    defaultTsGenOptions,
+    genericTsTypeable,
+    generic1TsTypeable,
+    GTsDatatype,
+    GTsDatatype1
 ) where
 
 import Servant.TS.Internal
