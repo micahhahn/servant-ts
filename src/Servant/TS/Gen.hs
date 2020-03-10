@@ -1,8 +1,10 @@
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 module Servant.TS.Gen (
     tsForAPI,
@@ -26,6 +28,14 @@ import Servant.Foreign
 
 import Servant.TS.Core
 import Servant.TS.Internal
+
+deriving instance Functor Req
+deriving instance Functor Url
+deriving instance Functor Segment
+deriving instance Functor SegmentType
+deriving instance Functor Arg
+deriving instance Functor QueryArg
+deriving instance Functor HeaderArg
 
 -- Dummy type to parameterize instances
 data TypeScript

@@ -2,7 +2,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
@@ -11,7 +10,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -73,13 +71,7 @@ import Servant.Foreign
 
 import Servant.TS.Core
 
-deriving instance Functor Req
-deriving instance Functor Url
-deriving instance Functor Segment
-deriving instance Functor SegmentType
-deriving instance Functor Arg
-deriving instance Functor QueryArg
-deriving instance Functor HeaderArg
+
 
 mkTsConName :: forall a p. (Typeable a) => p a -> ConName
 mkTsConName p = ConName (mk tyConPackage) (mk tyConModule) (mk tyConName)
