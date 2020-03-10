@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
@@ -96,7 +97,7 @@ mkTsTypeName :: TypeRep -> TsTypeName
 mkTsTypeName t = let (con, args) = splitTyConApp t
                      mk f = Text.pack . f $ con
                      cons =  ConName (mk tyConPackage) (mk tyConModule) (mk tyConName)
-                  in TsTypeName cons (TsHKT . mkTsTypeName <$> args)
+                  in TsTypeName cons (mkTsTypeName <$> args) 0
 
 mkProxy :: Type -> ExpQ
 mkProxy t = [| Proxy |] `sigE` ([t| Proxy |] `appT` (return t))
@@ -104,10 +105,9 @@ mkProxy t = [| Proxy |] `sigE` ([t| Proxy |] `appT` (return t))
 mkTopLevelTsTypeName :: Name -> [Type] -> Q Exp
 mkTopLevelTsTypeName n ts = do
     con <- mkConName n
-    let as = (\case
-                (SigT (VarT n) StarT) -> [| TsGeneric |] `appE` (mkTextE . nameBase $ n)
-                (SigT v _) -> [| TsHKT |] `appE` ([| mkTsTypeName |] `appE` ([| typeRep |] `appE` mkProxy v))) <$> ts
-    [| TsTypeName |] `appE` lift con `appE` listE as
+    let as = [[| typeRep |] `appE` mkProxy v | SigT v (AppT _ _) <- ts ]
+    let hkts = ([| mkTsTypeName |] `appE`) <$> as
+    [| TsTypeName |] `appE` lift con `appE` listE hkts `appE` (litE . IntegerL . fromIntegral $ (length ts - length as))
 
 zipF :: [a -> b] -> [a] -> [b]
 zipF fs as = (\(f, a) -> f a) <$> zip fs as

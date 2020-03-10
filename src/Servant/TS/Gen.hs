@@ -62,34 +62,34 @@ defaultTsGenOptions = TsGenOptions TsSingleQuotes (TsIndentSpaces 4)
 tsForAPI :: (HasForeign TypeScript TsType api, GenerateList TsType (Foreign TsType api)) => Proxy api -> TsGenOptions -> Text
 tsForAPI api opts = writeEndpoints opts $ listFromAPI (Proxy :: Proxy TypeScript) (Proxy :: Proxy TsType) api
 
+mkGenericName :: Int -> Text
+mkGenericName i = "T" <> (Text.pack . show $ i + 1)
+
 tsUnqualifiedCustomTypeName :: TsTypeName -> Text
-tsUnqualifiedCustomTypeName (TsTypeName n ns) = Text.intercalate "_" (sanitizeTSName (_name n) : (tsUnqualifiedCustomTypeName <$> hkts)) <> genericText
-    where hkts = [x | (TsHKT x) <- ns]
-          generics = [x | (TsGeneric x) <- ns]
+tsUnqualifiedCustomTypeName (TsTypeName n ts a) = Text.intercalate "_" (sanitizeTSName (_name n) : (tsUnqualifiedCustomTypeName <$> ts)) <> genericText
+    where generics = mkGenericName <$> [0..(a - 1)]
           genericText = if length generics > 0 then "<" <> Text.intercalate ", " generics <> ">" else ""
 
 tsCustomTypeName :: TsTypeName -> [TsRefType] -> Text
-tsCustomTypeName (TsTypeName n ns) as = Text.intercalate "_" ((mn <> "." <> tn) : (tsUnqualifiedCustomTypeName <$> [x | (TsHKT x) <- ns])) <> argsText
+tsCustomTypeName (TsTypeName n ns _) as = Text.intercalate "_" ((mn <> "." <> tn) : (tsUnqualifiedCustomTypeName <$> ns)) <> argsText
     where tn = sanitizeTSName . _name $ n
           mn = sanitizeTSName . _module $ n
-          generics = [(TsGeneric x) | (TsGeneric x) <- ns]
-          args = tsTypeName generics <$> as
+          args = tsTypeName <$> as
           argsText = if length args > 0 then "<" <> Text.intercalate ", " args <> ">" else ""
 
-tsTypeName :: [TsTypeArg] -> TsRefType -> Text 
-tsTypeName _  TsVoid = "void"
-tsTypeName _  TsNever = "never"
-tsTypeName _  TsBoolean = "boolean"
-tsTypeName _  TsNumber = "number"
-tsTypeName _  TsString = "string"
-tsTypeName _  (TsStringLiteral n) = "\"" <> n <> "\""
-tsTypeName gs (TsNullable t) = tsTypeName gs t {- <> "?" -}
-tsTypeName _  (TsNamedType n as _) = tsCustomTypeName n as
-tsTypeName gs (TsArray t) = "Array<" <> tsTypeName gs t <> ">"
-tsTypeName gs (TsMap t) = "{[key: string]: " <> tsTypeName gs t <> "}"
-tsTypeName gs (TsTuple ts) = "[" <> Text.intercalate ", " (tsTypeName gs <$> ts) <> "]"
-tsTypeName gs (TsGenericArg i) = case gs !! i of 
-                                    TsGeneric t -> t
+tsTypeName :: TsRefType -> Text 
+tsTypeName TsVoid = "void"
+tsTypeName TsNever = "never"
+tsTypeName TsBoolean = "boolean"
+tsTypeName TsNumber = "number"
+tsTypeName TsString = "string"
+tsTypeName (TsStringLiteral n) = "\"" <> n <> "\""
+tsTypeName (TsNullable t) = tsTypeName t {- <> "?" -}
+tsTypeName (TsNamedType n as _) = tsCustomTypeName n as
+tsTypeName (TsArray t) = "Array<" <> tsTypeName t <> ">"
+tsTypeName (TsMap t) = "{[key: string]: " <> tsTypeName t <> "}"
+tsTypeName (TsTuple ts) = "[" <> Text.intercalate ", " (tsTypeName <$> ts) <> "]"
+tsTypeName (TsGenericArg i) = mkGenericName i
 
 makeQuote :: TsGenOptions -> Text
 makeQuote opts = case _quotes opts of
@@ -107,15 +107,15 @@ writeEndpoint opts t = do
     let functionName = mconcat . map Text.toTitle . unFunctionName . _reqFuncName $ t
     let method = TE.decodeUtf8 $ _reqMethod t
     successType <- maybe (return TsVoid) id (_reqReturnType t)
-    captures <- sequence [type' >>= (\t -> return $ name <> ": " <> tsTypeName [] t) | Cap (Arg (PathSegment name) type') <- (unSegment <$> (_path . _reqUrl $ t))]
-    (bodyArg, bodyJQueryArg) <- maybe (return ([], [])) (fmap (\t -> (["$body: " <> tsTypeName [] t], [("data", "$body")]))) $ _reqBody t
+    captures <- sequence [type' >>= (\t -> return $ name <> ": " <> tsTypeName t) | Cap (Arg (PathSegment name) type') <- (unSegment <$> (_path . _reqUrl $ t))]
+    (bodyArg, bodyJQueryArg) <- maybe (return ([], [])) (fmap (\t -> (["$body: " <> tsTypeName t], [("data", "$body")]))) $ _reqBody t
     
     q <- sequence $ (\a -> do
                         t <- _argType . _queryArgName $ a
                         return (unPathSegment . _argName . _queryArgName $ a, t, _queryArgType a)
                     ) <$> (_queryStr . _reqUrl $ t)
     
-    let queryArgs = if null q then [] else [("$query: {" <> Text.intercalate ", " ((\(n, t, _) -> n <> ": " <> tsTypeName [] t) <$> q) <> "}")]
+    let queryArgs = if null q then [] else [("$query: {" <> Text.intercalate ", " ((\(n, t, _) -> n <> ": " <> tsTypeName t) <$> q) <> "}")]
 
     let checkArg (n, t, at) = let param = "$query." <> n
                                in case at of
@@ -134,7 +134,7 @@ writeEndpoint opts t = do
     let url = quote (mconcat (mapSegment opts . unSegment <$> (_path . _reqUrl $ t))) <>
               if null q then "" else " + $queryString"
 
-    let args = captures ++ queryArgs ++ bodyArg ++ ["onSuccess: (result: " <> (tsTypeName [] successType) <> ") => void", "onError: () => void"]
+    let args = captures ++ queryArgs ++ bodyArg ++ ["onSuccess: (result: " <> (tsTypeName successType) <> ") => void", "onError: () => void"]
     let jqueryArgs = [("url", url), ("success", "onSuccess"), ("error", "onError"), ("method", quote method)] ++ bodyJQueryArg
     return $ "export function " <> functionName <> "(" <> Text.intercalate ", " args <> "): void\n" <>
              "{\n" <>
@@ -168,8 +168,6 @@ writeCustomType opts (tr, t) = let prefix = "export type " <> typeName
                                 in i' <> prefix <> " = " <> writeCustomTypeDef (Text.length prefix) t <> "\n"
     where i' = makeIndent opts
           typeName = tsUnqualifiedCustomTypeName tr
-          generics = case tr of 
-                        (TsTypeName _ gs) -> [TsGeneric t | (TsGeneric t) <- gs]
          
           writeCustomTypeDef :: Int -> TsRefType -> Text
           writeCustomTypeDef i (TsUnion ts) = Text.intercalate ("\n" <> i' <> Text.replicate i " " <> " | ") (writeCustomTypeDef i <$> ts)
@@ -179,7 +177,7 @@ writeCustomType opts (tr, t) = let prefix = "export type " <> typeName
           writeCustomTypeDef i (TsTuple ts) = let tuple = Text.intercalate ", " $ writeCustomTypeDef i <$> ts
                                                 in if length ts == 1 then tuple else "[" <> tuple <> "]"
 
-          writeCustomTypeDef _ t = tsTypeName generics t
+          writeCustomTypeDef _ t = tsTypeName t
 
           writeTypeGuard :: (Text, TsRefType) -> Text
           writeTypeGuard (n, TsObject ts) = let tr = writeCustomTypeDef 0 (TsObject ts)
@@ -190,7 +188,7 @@ writeCustomType opts (tr, t) = let prefix = "export type " <> typeName
                                                 i' <> "}"
 
 writeCustomTypes :: TsGenOptions -> Map TsTypeName TsRefType -> Text
-writeCustomTypes opts m = let as = (\t -> (_module . (\(TsTypeName c _) -> c) . fst $ t, t)) <$> Map.assocs m
+writeCustomTypes opts m = let as = (\t -> (_module . (\(TsTypeName c _ _) -> c) . fst $ t, t)) <$> Map.assocs m
                               gs = groupBy (\l r -> fst l == fst r) . sortBy (\l r -> fst l `compare` fst r) $ as
                               gs' = (\g -> (fst . head $ g, snd <$> g)) <$> gs
                               t = (\g -> "export namespace " <> fst g <> "\n" <>

@@ -285,7 +285,7 @@ instance (TsTypeable a) => TsTypeable (Maybe a) where
 instance (TsTypeable a, TsTypeable b) => TsTypeable (Either a b) where
     tsTypeRep _ = let t = TsDef $ TsUnion [TsObject $ HashMap.fromList [("Left", TsGenericArg 0)], 
                                            TsObject $ HashMap.fromList [("Right", TsGenericArg 1)]]
-                      tn = TsTypeName (mkTsConName (Proxy :: Proxy Either)) [TsGeneric "a", TsGeneric "b"]
+                      tn = TsTypeName (mkTsConName (Proxy :: Proxy Either)) [] 2
                    in TsNamedType tn [tsTypeRep (Proxy :: Proxy a), tsTypeRep (Proxy :: Proxy b)] t
 
 instance (TsTypeable a) => TsTypeable [a] where
@@ -337,7 +337,7 @@ instance (TsTypeable v) => TsTypeable (IntMap v) where
 
 instance (TsTypeable a, Typeable a) => TsTypeable (Tree a) where
     tsTypeRep _ = let t = TsDef $ TsTuple [TsGenericArg 0, TsArray (tsTypeRep (Proxy :: Proxy (Tree a)))]
-                      tn = TsTypeName (mkTsConName (Proxy :: Proxy Tree)) [TsGeneric "a"]
+                      tn = TsTypeName (mkTsConName (Proxy :: Proxy Tree)) [] 1
                       ts = [tsTypeRep (Proxy :: Proxy a)] 
                    in TsNamedType tn ts t
 

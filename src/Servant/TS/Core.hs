@@ -25,17 +25,25 @@ data ConName = ConName
     { _package :: !Text
     , _module :: !Text
     , _name :: !Text
-    } deriving (Show, Eq, Ord)
+    } deriving (Eq, Ord)
+
+instance Show ConName where
+    show (ConName p m n) = Text.unpack p ++ "-" ++ Text.unpack m ++ "." ++ Text.unpack n
 
 -- | Contains enough information to uniquely identify a top level typescript definition.
 -- | Note that not all type arguments need be named, only those of kind (k -> *). We represent these
 -- | in TypeScript as separate named types
-data TsTypeName = TsTypeName ConName [TsTypeArg]
-    deriving (Show, Eq, Ord)
+data TsTypeName = TsTypeName ConName [TsTypeName] Int 
+    deriving (Eq, Ord)
 
-data TsTypeArg = TsHKT TsTypeName -- ^ Higher kinded types aren't well supported in TypeScript, we just use a different top level declaration for each one
-               | TsGeneric Text -- ^ Arguments of kind * can be represented as generics in TypeScript
-    deriving (Show, Eq, Ord)
+instance Show TsTypeName where
+    show (TsTypeName c ts a) = show c ++ arity ++ hkts
+        where arity = case a > 0 of
+                          True -> "`" ++ show a
+                          False -> ""
+              hkts = case ts of
+                         [] -> ""
+                         hs -> " " ++ show hs
 
 newtype TsDef = TsDef { unTsDef :: TsType }
     deriving (Show, Eq)
@@ -63,8 +71,6 @@ data TsTypeBase a = TsVoid
 
 type TsType = TsTypeBase TsDef
 type TsRefType = TsTypeBase ()
-
-{- TODO: Fork recursion-schemas to be able to handle this situation -}
 
 data TsTypeBaseF a r = TsVoidF
                      | TsNeverF
