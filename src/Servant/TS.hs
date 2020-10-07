@@ -8,7 +8,8 @@ module Servant.TS (
     genericTsTypeable,
     generic1TsTypeable,
     GTsDatatype,
-    GTsDatatype1
+    GTsDatatype1,
+    mkTsConName
 ) where
 
 import Servant.TS.Internal
