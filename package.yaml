@@ -27,7 +27,6 @@ dependencies:
 - vector
 - time
 - tagged
-- primitive
 - uuid
 - template-haskell
 - th-abstraction

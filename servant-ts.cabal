@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 860783959b5616f318a984785d3e5c38a78fcade8f382d3f84aabb00cdf67dae
+-- hash: 85576b22fb608977dd52b078e9423fa2e61a928152b22637c6e2eb28ad02a2ae
 
 name:           servant-ts
 version:        0.1.0.0
@@ -40,7 +40,6 @@ library
       aeson
     , base >=4.7 && <5
     , containers
-    , primitive
     , recursion-schemes
     , servant
     , servant-foreign
@@ -67,7 +66,6 @@ executable servant-ts-examples
       aeson
     , base >=4.7 && <5
     , containers
-    , primitive
     , recursion-schemes
     , servant
     , servant-foreign
@@ -100,7 +98,6 @@ test-suite servant-ts-test
       aeson
     , base >=4.7 && <5
     , containers
-    , primitive
     , recursion-schemes
     , servant
     , servant-foreign

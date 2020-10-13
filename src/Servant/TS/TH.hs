@@ -66,9 +66,6 @@ containsHKT hkts = f
           f (VarT x) =  Set.member (VarT x) hkts
           f _ = False
 
-instance Lift Text where
-    lift t = mkTextE (Text.unpack t)
-
 instance Lift ConName where
     lift (ConName p m n) = [| ConName |] `appE` (lift p) `appE` (lift m) `appE` (lift n)
 
