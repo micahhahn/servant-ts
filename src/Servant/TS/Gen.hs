@@ -87,10 +87,10 @@ tsTypeName TsNull = "null"
 tsTypeName (TsStringLiteral n) = "\"" <> n <> "\""
 tsTypeName (TsUnion []) = error "invalid empty TsUnion"
 tsTypeName (TsUnion ts) = Text.intercalate " | " (tsTypeName <$> ts)
-tsTypeName (TsNullable t) = tsTypeName t {- <> "?" -}
+tsTypeName (TsNullable t) = tsTypeName t <> " | null"
 tsTypeName (TsNamedType n as _) = tsCustomTypeName n as
 tsTypeName (TsArray t) = "Array<" <> tsTypeName t <> ">"
-tsTypeName (TsMap t) = "{[key: string]: " <> tsTypeName t <> "}"
+tsTypeName (TsMap t) = "{[key: string]: " <> tsTypeName t <> " | undefined }"
 tsTypeName (TsTuple ts) = "[" <> Text.intercalate ", " (tsTypeName <$> ts) <> "]"
 tsTypeName (TsGenericArg i) = mkGenericName i
 
