@@ -124,9 +124,9 @@ writeEndpoint opts t = do
                                in case at of
                                       Flag -> i' <> "if (" <> param <> " === true)\n" <>
                                               i' <> i' <> "$queryArgs.push(" <> quote n <> ");\n"
-                                      Normal -> i' <> "if (" <> param <> " !== undefined)\n" <>
+                                      Normal -> i' <> "if (" <> param <> " != null)\n" <>
                                                 i' <> i' <> "$queryArgs.push(" <> quote (n <> "=") <> " + encodeURIComponent(" <> writeStringCast param t <> "));\n"
-                                      List -> i' <> "if (" <> param <> " !== undefined)\n" <>
+                                      List -> i' <> "if (" <> param <> " != null)\n" <>
                                               i' <> i' <> "$queryArgs.push(..." <> param <> ".map(x => " <> quote (n <> "=") <> " + encodeURIComponent(" <> writeStringCast "x" t <> ")));\n"
 
     let queryPrepare = if null q then ""
