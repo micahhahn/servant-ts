@@ -87,10 +87,10 @@ tsTypeName TsNull = "null"
 tsTypeName (TsStringLiteral n) = "\"" <> n <> "\""
 tsTypeName (TsUnion []) = error "invalid empty TsUnion"
 tsTypeName (TsUnion ts) = Text.intercalate " | " (tsTypeName <$> ts)
-tsTypeName (TsNullable t) = tsTypeName t {- <> "?" -}
+tsTypeName (TsNullable t) = tsTypeName t <> " | null"
 tsTypeName (TsNamedType n as _) = tsCustomTypeName n as
 tsTypeName (TsArray t) = "Array<" <> tsTypeName t <> ">"
-tsTypeName (TsMap t) = "{[key: string]: " <> tsTypeName t <> "}"
+tsTypeName (TsMap t) = "{[key: string]: " <> tsTypeName t <> " | undefined }"
 tsTypeName (TsTuple ts) = "[" <> Text.intercalate ", " (tsTypeName <$> ts) <> "]"
 tsTypeName (TsGenericArg i) = mkGenericName i
 
@@ -124,9 +124,9 @@ writeEndpoint opts t = do
                                in case at of
                                       Flag -> i' <> "if (" <> param <> " === true)\n" <>
                                               i' <> i' <> "$queryArgs.push(" <> quote n <> ");\n"
-                                      Normal -> i' <> "if (" <> param <> " !== undefined)\n" <>
+                                      Normal -> i' <> "if (" <> param <> " != null)\n" <>
                                                 i' <> i' <> "$queryArgs.push(" <> quote (n <> "=") <> " + encodeURIComponent(" <> writeStringCast param t <> "));\n"
-                                      List -> i' <> "if (" <> param <> " !== undefined)\n" <>
+                                      List -> i' <> "if (" <> param <> " != null)\n" <>
                                               i' <> i' <> "$queryArgs.push(..." <> param <> ".map(x => " <> quote (n <> "=") <> " + encodeURIComponent(" <> writeStringCast "x" t <> ")));\n"
 
     let queryPrepare = if null q then ""
