@@ -34,11 +34,6 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.Map.Lazy (Map)
 import qualified Data.Map.Lazy as Map
 import qualified Data.Monoid as Monoid
-import qualified Data.Primitive.Array as PM
-import qualified Data.Primitive.PrimArray as PM
-import qualified Data.Primitive.SmallArray as PM
-import qualified Data.Primitive.Types as PM
-import qualified Data.Primitive.UnliftedArray as PM
 import Data.Proxy
 import Data.Ratio (Ratio)
 {- import Data.Scientific (Scientific) -}
@@ -381,18 +376,6 @@ instance (TsTypeable a) => TsTypeable (HashSet a) where
 
 instance (TsTypeableKey k, TsTypeable v) => TsTypeable (HashMap k v) where
     tsTypeRep _ = makeMap (Proxy :: Proxy k) (Proxy :: Proxy v)
-
-instance (TsTypeable a) => TsTypeable (PM.Array a) where
-    tsTypeRep _ = TsArray (tsTypeRep (Proxy :: Proxy a))
-
-instance (TsTypeable a) => TsTypeable (PM.SmallArray a) where
-    tsTypeRep _ = TsArray (tsTypeRep (Proxy :: Proxy a))
-
-instance (TsTypeable a) => TsTypeable (PM.PrimArray a) where
-    tsTypeRep _ = TsArray (tsTypeRep (Proxy :: Proxy a))
-
-instance (TsTypeable a) => TsTypeable (PM.UnliftedArray a) where
-    tsTypeRep _ = TsArray (tsTypeRep (Proxy :: Proxy a))
 
 instance TsTypeable Day where
     tsTypeRep _ = TsString
