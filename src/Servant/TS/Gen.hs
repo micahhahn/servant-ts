@@ -16,7 +16,7 @@ module Servant.TS.Gen (
 
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HashMap
-import Data.List (groupBy, sortBy)
+import Data.List (groupBy, sort, sortBy, sortOn)
 import Data.Map.Lazy (Map)
 import qualified Data.Map.Lazy as Map
 import Data.Proxy
@@ -175,7 +175,7 @@ writeCustomType opts (tr, t) = let prefix = "export type " <> typeName
           writeCustomTypeDef :: Int -> TsRefType -> Text
           writeCustomTypeDef i (TsUnion ts) = Text.intercalate ("\n" <> i' <> Text.replicate i " " <> " | ") (writeCustomTypeDef i <$> ts)
 
-          writeCustomTypeDef i (TsObject ts) = "{ " <> Text.intercalate ", " ((\(n, t) -> n <> ": " <> writeCustomTypeDef i t) <$> HashMap.toList ts) <> " }"
+          writeCustomTypeDef i (TsObject ts) = "{ " <> Text.intercalate ", " ((\(n, t) -> n <> ": " <> writeCustomTypeDef i t) <$> sortOn fst (HashMap.toList ts)) <> " }"
 
           writeCustomTypeDef i (TsTuple ts) = let tuple = Text.intercalate ", " $ writeCustomTypeDef i <$> ts
                                                 in if length ts == 1 then tuple else "[" <> tuple <> "]"
@@ -187,7 +187,7 @@ writeCustomType opts (tr, t) = let prefix = "export type " <> typeName
                                              in i' <> "export function is" <> n <> "($u: " <> typeName <> "): $u is " <> tr <> "\n" <>
                                                 i' <> "{\n" <>
                                                 i' <> i' <> "let $t = <" <> tr <> ">$u;\n" <>
-                                                i' <> i' <> "return " <> Text.intercalate " && " (("$t." <> ) . (<> " !== undefined") <$> HashMap.keys ts) <> ";\n" <>
+                                                i' <> i' <> "return " <> Text.intercalate " && " (("$t." <> ) . (<> " !== undefined") <$> sort (HashMap.keys ts)) <> ";\n" <>
                                                 i' <> "}"
 
 writeCustomTypes :: TsGenOptions -> Map TsTypeName TsRefType -> Text
