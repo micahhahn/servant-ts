@@ -87,6 +87,8 @@ tsTypeName TsNull = "null"
 tsTypeName (TsStringLiteral n) = "\"" <> n <> "\""
 tsTypeName (TsUnion []) = error "invalid empty TsUnion"
 tsTypeName (TsUnion ts) = Text.intercalate " | " (tsTypeName <$> ts)
+tsTypeName (TsIntersect []) = error "invalid empty TsIntersect"
+tsTypeName (TsIntersect ts) = Text.intercalate " & " (tsTypeName <$> ts)
 tsTypeName (TsNullable t) = tsTypeName t <> " | null"
 tsTypeName (TsNamedType n as _) = tsCustomTypeName n as
 tsTypeName (TsArray t) = "Array<" <> tsTypeName t <> ">"
@@ -174,6 +176,7 @@ writeCustomType opts (tr, t) = let prefix = "export type " <> typeName
          
           writeCustomTypeDef :: Int -> TsRefType -> Text
           writeCustomTypeDef i (TsUnion ts) = Text.intercalate ("\n" <> i' <> Text.replicate i " " <> " | ") (writeCustomTypeDef i <$> ts)
+          writeCustomTypeDef i (TsIntersect ts) = Text.intercalate ("\n" <> i' <> Text.replicate i " " <> " & ") (writeCustomTypeDef i <$> ts)
 
           writeCustomTypeDef i (TsObject ts) = "{ " <> Text.intercalate ", " ((\(n, t) -> n <> ": " <> writeCustomTypeDef i t) <$> sortOn fst (HashMap.toList ts)) <> " }"
 

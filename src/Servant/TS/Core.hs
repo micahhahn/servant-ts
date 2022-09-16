@@ -60,6 +60,7 @@ data TsTypeBase a = TsVoid
                   | TsString
                   | TsStringLiteral Text
                   | TsUnion [TsTypeBase a]
+                  | TsIntersection [TsTypeBase a]
                   | TsMap (TsTypeBase a)
                   | TsNullable (TsTypeBase a)
                   | TsArray (TsTypeBase a)
@@ -80,6 +81,7 @@ data TsTypeBaseF a r = TsVoidF
                      | TsStringF
                      | TsStringLiteralF Text
                      | TsUnionF [r]
+                     | TsIntersectionF [r]
                      | TsMapF r
                      | TsNullableF r
                      | TsArrayF r
@@ -104,6 +106,7 @@ instance Recursive TsType where
     project TsString = TsStringF
     project (TsStringLiteral a) = TsStringLiteralF a
     project (TsUnion a) = TsUnionF a
+    project (TsIntersection a) = TsIntersectionF a
     project (TsMap a) = TsMapF a
     project (TsNullable a) = TsNullableF a
     project (TsArray a) = TsArrayF a
@@ -121,6 +124,7 @@ instance Corecursive TsType where
     embed TsStringF = TsString
     embed (TsStringLiteralF a) = TsStringLiteral a
     embed (TsUnionF a) = TsUnion a
+    embed (TsIntersectionF a) = TsIntersection a
     embed (TsMapF a) = TsMap a
     embed (TsNullableF a) = TsNullable a
     embed (TsArrayF a) = TsArray a
@@ -200,6 +204,7 @@ flatten t = cata f t $ Set.empty
           f TsStringF _ = pure TsString
           f (TsStringLiteralF a) _ = pure (TsStringLiteral a)
           f (TsUnionF a) s = TsUnion <$> mapM ($ s) a
+          f (TsIntersectionF a) s = TsIntersection <$> mapM ($ s) a
           f (TsMapF a) s = TsMap <$> a s
           f (TsNullableF a) s = TsNullable <$> a s
           f (TsArrayF a) s = TsArray <$> a s

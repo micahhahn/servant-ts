@@ -81,6 +81,7 @@ tsTypecheck t v = para f t $ ([], v)
           f (TsNullableF (_, f')) x = f' x
           f (TsArrayF (_, f')) (gs, Array vs) = firstError $ f' . (gs,) <$> Vector.toList vs
           f t@(TsUnionF ts) x = if any isNothing $ ($ x) . snd <$> ts then Nothing else mkError t (snd x)
+          f t@(TsIntersectF ts) x = if any isNothing $ ($ x) . snd <$> ts then Nothing else mkError t (snd x)
           f t@(TsObjectF ts) (gs, v@(Object m)) = if (Set.fromList . HashMap.keys) ts == (Set.fromList . HashMap.keys) m 
                                                   then firstError $ (\((_, f), v) -> f (gs, v)) <$> (HashMap.elems $ HashMap.intersectionWith (,) ts m)
                                                   else mkError t v
